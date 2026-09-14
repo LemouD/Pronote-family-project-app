@@ -3,25 +3,56 @@ import type { Env } from "./env";
 import { getHomework, setHomeworkStatus } from "./pronote";
 import { renderChildPage, renderParentPage } from "./render";
 
+// Contenu 100% genere cote serveur, pas de ressources externes : une CSP
+// stricte (pas de scripts/objets tiers) reste compatible avec le <script>/
+// <style> inline utilises dans render.ts.
+const SECURITY_HEADERS = {
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "no-referrer",
+  "content-security-policy":
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+  // Donnees personnelles d'un enfant : jamais mises en cache (navigateur ou intermediaire),
+  // utile notamment sur une tablette partagee.
+  "cache-control": "private, no-store"
+};
+
 function html(body: string, status = 200): Response {
   return new Response(body, {
     status,
-    headers: { "content-type": "text/html; charset=utf-8" }
+    headers: { "content-type": "text/html; charset=utf-8", ...SECURITY_HEADERS }
   });
 }
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8" }
+    headers: { "content-type": "application/json; charset=utf-8", ...SECURITY_HEADERS }
   });
 }
 
+/** Comparaison a temps constant pour eviter une fuite d'info par timing sur le token. */
+function timingSafeEqual(a: string, b: string): boolean {
+  const encoder = new TextEncoder();
+  const bufA = encoder.encode(a);
+  const bufB = encoder.encode(b);
+  // Longueur differente : on compare quand meme un buffer de meme taille que bufA
+  // pour ne pas court-circuiter immediatement (fuite de longueur), puis on echoue.
+  const length = Math.max(bufA.length, bufB.length, 1);
+  let diff = bufA.length === bufB.length ? 0 : 1;
+  for (let i = 0; i < length; i++) {
+    diff |= (bufA[i] ?? 0) ^ (bufB[i] ?? 0);
+  }
+  return diff === 0;
+}
+
 function isParentAuthorized(request: Request, env: Env): boolean {
-  if (!env.PARENT_ACCESS_TOKEN) return true; // pas de protection configuree
+  // Fail-closed : sans token configure, /parent est un chemin fixe et
+  // devinable (contrairement a /enfant/<slug>), donc pas de mode "ouvert".
+  if (!env.PARENT_ACCESS_TOKEN) return false;
   const url = new URL(request.url);
   const provided = url.searchParams.get("token") ?? request.headers.get("x-parent-token");
-  return provided === env.PARENT_ACCESS_TOKEN;
+  if (!provided) return false;
+  return timingSafeEqual(provided, env.PARENT_ACCESS_TOKEN);
 }
 
 export default {
@@ -42,7 +73,8 @@ export default {
         const items = await getHomework(env, child);
         return html(renderChildPage(child, items));
       } catch (error) {
-        return html(renderChildPage(child, [], (error as Error).message), 500);
+        console.error(`getHomework(${child.slug}) failed:`, error);
+        return html(renderChildPage(child, [], "Impossible de recuperer les devoirs pour le moment."), 500);
       }
     }
 
@@ -58,7 +90,7 @@ export default {
         return json({ error: "invalid body" }, 400);
       }
 
-      if (typeof body.id !== "string" || typeof body.done !== "boolean") {
+      if (typeof body.id !== "string" || body.id.length === 0 || body.id.length > 200 || typeof body.done !== "boolean") {
         return json({ error: "id and done are required" }, 400);
       }
 
@@ -66,7 +98,8 @@ export default {
         await setHomeworkStatus(env, child, body.id, body.done);
         return json({ ok: true });
       } catch (error) {
-        return json({ error: (error as Error).message }, 500);
+        console.error(`setHomeworkStatus(${child.slug}, ${body.id}) failed:`, error);
+        return json({ error: "Impossible d'enregistrer, reessaie." }, 500);
       }
     }
 
@@ -81,7 +114,8 @@ export default {
             const items = await getHomework(env, child);
             return { child, items };
           } catch (error) {
-            return { child, items: [], error: (error as Error).message };
+            console.error(`getHomework(${child.slug}) failed:`, error);
+            return { child, items: [], error: "Impossible de recuperer les devoirs pour le moment." };
           }
         })
       );

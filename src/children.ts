@@ -16,9 +16,12 @@ export interface ChildConfig {
   secretPrefix: string;
 }
 
+// Le suffixe aleatoire de chaque slug est genere avec :
+//   node -e "console.log(require('crypto').randomBytes(9).toString('base64url'))"
+// A regenerer avec la meme commande si un slug venait a fuiter.
 export const children: ChildConfig[] = [
-  { slug: "enfant1-changeme", displayName: "Enfant 1", secretPrefix: "ENFANT1" },
-  { slug: "enfant2-changeme", displayName: "Enfant 2", secretPrefix: "ENFANT2" }
+  { slug: "malick-K5p0nA65n8L1", displayName: "Malick", secretPrefix: "MALICK" },
+  { slug: "codou-tBCiBx5FYmTB", displayName: "Codou", secretPrefix: "CODOU" }
 ];
 
 export function findChildBySlug(slug: string): ChildConfig | undefined {

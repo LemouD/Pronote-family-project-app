@@ -64,9 +64,20 @@ const BASE_STYLE = `
   }
 `;
 
+const HEX_COLOR = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+/**
+ * item.color vient de Pronote (couleur de matiere), donc d'une source externe.
+ * On la valide comme vraie couleur hex plutot que de se fier au seul echappement
+ * HTML avant de l'inserer dans un attribut style, pour fermer toute injection CSS.
+ */
+function safeColor(color: string): string {
+  return HEX_COLOR.test(color) ? color : "#999";
+}
+
 function renderItem(item: HomeworkItem, toggleUrl: string): string {
   return `
-    <label class="item ${item.done ? "done" : ""}" style="--subject-color:${escapeHtml(item.color || "#999")}">
+    <label class="item ${item.done ? "done" : ""}" style="--subject-color:${safeColor(item.color)}">
       <input type="checkbox" ${item.done ? "checked" : ""} data-id="${escapeHtml(item.id)}" data-toggle-url="${escapeHtml(toggleUrl)}" />
       <span>
         <div class="item-subject">${escapeHtml(item.subject)}</div>

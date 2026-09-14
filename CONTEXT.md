@@ -91,21 +91,33 @@ Le squelette complet est en place dans ce repo :
 - `.dev.vars.example` — modèle pour tester en local (`npm run dev`), à copier
   en `.dev.vars` (jamais commité).
 
+## Enfants (confirmé)
+
+- Enfant 1 : **Malick** — `src/children.ts`, slug `malick-K5p0nA65n8L1`,
+  secrets `PRONOTE_MALICK_*`.
+- Enfant 2 : **Codou** — slug `codou-tBCiBx5FYmTB`, secrets `PRONOTE_CODOU_*`.
+
+## Portée du projet : phase 1
+
+Cette version cible uniquement les deux enfants de Lémou (config codée en dur
+dans `src/children.ts`, pas d'interface d'admin). L'architecture reste conçue
+pour qu'une **phase ultérieure** permette à d'autres familles de choisir
+elles-mêmes le prénom de leur enfant et l'URL Pronote de leur collège (déjà
+possible techniquement en éditant `src/children.ts` + secrets, mais sans
+self-service ni UI pour l'instant — hors scope phase 1).
+
 ## Infos encore manquantes avant de déployer
 
-1. **Prénoms/slugs définitifs des deux enfants** — à mettre dans
-   `src/children.ts` (remplacer `enfant1-changeme` / `enfant2-changeme` par
-   des slugs longs et non-devinables, ex. `lea-9f3k2xq`).
-2. **URL Pronote exacte** de l'établissement — Lémou doit la relever dans la
+1. **URL Pronote exacte** de l'établissement — Lémou doit la relever dans la
    barre d'adresse au prochain login d'un des enfants.
-3. **Identifiants Pronote de chaque enfant** — à ajouter directement en
+2. **Identifiants Pronote de chaque enfant** — à ajouter directement en
    secrets Cloudflare une fois le Worker créé (`wrangler secret put ...`),
    jamais à coller dans une conversation.
-4. **Créer le KV namespace** : `npx wrangler kv namespace create
+3. **Créer le KV namespace** : `npx wrangler kv namespace create
    PRONOTE_CACHE`, puis reporter l'id dans `wrangler.toml`.
-5. **Connecter le repo GitHub à Cloudflare** pour le déploiement auto (comme
+4. **Connecter le repo GitHub à Cloudflare** pour le déploiement auto (comme
    Mon Menu IA), une fois testé en local.
-6. **Configurer les pages en page de démarrage** sur les appareils des
+5. **Configurer les pages en page de démarrage** sur les appareils des
    enfants une fois les URLs `/enfant/<slug>` stables.
 
 ## Contexte connexe utile (projet "Mon Menu IA", même compte Cloudflare)

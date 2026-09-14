@@ -1,13 +1,15 @@
 # Copier en .dev.vars (jamais commite) pour tester en local avec `npm run dev`.
 # En prod, ces valeurs sont des secrets Cloudflare (wrangler secret put ...), pas des vars.
 
-PRONOTE_ENFANT1_URL=https://xxxxx.index-education.net/pronote/eleve.html?login=true
-PRONOTE_ENFANT1_USERNAME=identifiant.enfant1
-PRONOTE_ENFANT1_PASSWORD=motdepasse
+PRONOTE_MALICK_URL=https://xxxxx.index-education.net/pronote/eleve.html?login=true
+PRONOTE_MALICK_USERNAME=identifiant.malick
+PRONOTE_MALICK_PASSWORD=motdepasse
 
-PRONOTE_ENFANT2_URL=https://xxxxx.index-education.net/pronote/eleve.html?login=true
-PRONOTE_ENFANT2_USERNAME=identifiant.enfant2
-PRONOTE_ENFANT2_PASSWORD=motdepasse
+PRONOTE_CODOU_URL=https://xxxxx.index-education.net/pronote/eleve.html?login=true
+PRONOTE_CODOU_USERNAME=identifiant.codou
+PRONOTE_CODOU_PASSWORD=motdepasse
 
-# Optionnel : protege /parent avec ?token=... ou header x-parent-token
+# Obligatoire pour que /parent reponde (sinon toujours 403) : header x-parent-token
+# (recommande) ou ?token=... (pratique sur telephone, mais visible dans l'historique
+# du navigateur et les logs serveur).
 PARENT_ACCESS_TOKEN=

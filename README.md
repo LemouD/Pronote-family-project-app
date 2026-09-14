@@ -13,7 +13,10 @@ Contexte complet des décisions et de l'historique du projet : voir [CONTEXT.md]
 - `GET /enfant/<slug>` — page dédiée à un enfant (à mettre en page de
   démarrage sur son PC/tablette).
 - `POST /enfant/<slug>/toggle` — coche/décoche un devoir, écrit dans Pronote.
-- `GET /parent` — vue agrégée de tous les enfants, protégeable par un token.
+- `GET /parent` — vue agrégée de tous les enfants, protégée par un token
+  (obligatoire : sans `PARENT_ACCESS_TOKEN` configuré, `/parent` refuse
+  l'accès — contrairement à `/enfant/<slug>`, c'est un chemin fixe et
+  devinable, donc pas de mode "ouvert" par défaut).
 
 ## Installation
 
@@ -60,10 +63,14 @@ npm run typecheck
    npx wrangler secret put PRONOTE_<PREFIX>_USERNAME
    npx wrangler secret put PRONOTE_<PREFIX>_PASSWORD
    ```
-   Optionnel, pour protéger `/parent` :
+   Obligatoire pour que `/parent` fonctionne (sinon toujours 403) :
    ```bash
    npx wrangler secret put PARENT_ACCESS_TOKEN
    ```
+   Le token peut être passé en header (`x-parent-token`, recommandé) ou en
+   query string (`?token=...`, pratique pour un lien/raccourci sur téléphone
+   mais visible dans l'historique du navigateur et les logs serveur — à
+   n'utiliser que sur un appareil personnel).
 3. Déployer :
    ```bash
    npm run deploy
