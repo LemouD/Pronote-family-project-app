@@ -1,5 +1,6 @@
 import { children, findChildBySlug } from "./children";
 import type { Env } from "./env";
+import { annotateNewlyDone } from "./parentView";
 import { getHomework, setHomeworkStatus } from "./pronote";
 import { renderChildPage, renderParentPage } from "./render";
 
@@ -125,7 +126,7 @@ export default {
         children.map(async (child) => {
           try {
             const items = await getHomework(env, child);
-            return { child, items };
+            return { child, items: await annotateNewlyDone(env, child, items) };
           } catch (error) {
             console.error(`getHomework(${child.slug}) failed:`, error);
             return { child, items: [], error: "Impossible de recuperer les devoirs pour le moment." };

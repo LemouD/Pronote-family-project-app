@@ -1,4 +1,5 @@
 import type { ChildConfig } from "./children";
+import type { ParentHomeworkItem } from "./parentView";
 import type { HomeworkItem } from "./pronote";
 
 function escapeHtml(value: string): string {
@@ -51,6 +52,20 @@ const BASE_STYLE = `
   .item.done { opacity: 0.55; }
   .item.done .item-desc { text-decoration: line-through; }
   .item input[type="checkbox"] { width: 22px; height: 22px; margin-top: 2px; flex-shrink: 0; }
+  .status-icon { font-size: 1.2rem; line-height: 1.4rem; flex-shrink: 0; }
+  .item.new-change { box-shadow: 0 0 0 2px #2f6fed; }
+  .new-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: white;
+    background: #2f6fed;
+    border-radius: 999px;
+    padding: 1px 8px;
+    vertical-align: middle;
+  }
   .item-subject { font-weight: 600; font-size: 0.95rem; }
   .item-desc { font-size: 0.95rem; margin-top: 2px; white-space: pre-wrap; }
   .empty { color: #666; font-style: italic; }
@@ -75,7 +90,8 @@ function safeColor(color: string): string {
   return HEX_COLOR.test(color) ? color : "#999";
 }
 
-function renderItem(item: HomeworkItem, toggleUrl: string): string {
+/** Case a cocher active : utilisee sur la page enfant, ecrit dans Pronote au clic. */
+function renderEditableItem(item: HomeworkItem, toggleUrl: string): string {
   return `
     <label class="item ${item.done ? "done" : ""}" style="--subject-color:${safeColor(item.color)}">
       <input type="checkbox" ${item.done ? "checked" : ""} data-id="${escapeHtml(item.id)}" data-toggle-url="${escapeHtml(toggleUrl)}" />
@@ -87,8 +103,26 @@ function renderItem(item: HomeworkItem, toggleUrl: string): string {
   `;
 }
 
-function groupByDay(items: HomeworkItem[]): Map<string, HomeworkItem[]> {
-  const groups = new Map<string, HomeworkItem[]>();
+/**
+ * Indicateur de statut en lecture seule : utilise sur la page parent. Pas
+ * d'input ni d'appel au toggle endpoint, le parent consulte, il ne modifie pas.
+ * isNew surligne ce qui vient d'etre coche "fait" depuis la derniere visite
+ * de /parent (voir src/parentView.ts) - pas de notification push, juste visuel.
+ */
+function renderReadOnlyItem(item: ParentHomeworkItem): string {
+  return `
+    <div class="item ${item.done ? "done" : ""} ${item.isNew ? "new-change" : ""}" style="--subject-color:${safeColor(item.color)}">
+      <span class="status-icon" aria-hidden="true">${item.done ? "✅" : "⬜"}</span>
+      <span>
+        <div class="item-subject">${escapeHtml(item.subject)} ${item.isNew ? '<span class="new-badge">nouveau</span>' : ""}</div>
+        <div class="item-desc">${escapeHtml(item.description || "(pas de description)")}</div>
+      </span>
+    </div>
+  `;
+}
+
+function groupByDay<T extends HomeworkItem>(items: T[]): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
   for (const item of items) {
     const label = dayLabel(item.deadline);
     const list = groups.get(label) ?? [];
@@ -134,7 +168,7 @@ export function renderChildPage(child: ChildConfig, items: HomeworkItem[], error
           ([label, groupItems]) => `
             <div class="day-group">
               <div class="day-title">${escapeHtml(label)}</div>
-              ${groupItems.map((item) => renderItem(item, toggleUrl)).join("")}
+              ${groupItems.map((item) => renderEditableItem(item, toggleUrl)).join("")}
             </div>
           `
         )
@@ -162,7 +196,7 @@ export function renderChildPage(child: ChildConfig, items: HomeworkItem[], error
 
 export interface ParentChildSection {
   child: ChildConfig;
-  items: HomeworkItem[];
+  items: ParentHomeworkItem[];
   error?: string;
 }
 
@@ -170,7 +204,6 @@ export function renderParentPage(sections: ParentChildSection[]): string {
   const blocks = sections
     .map((section) => {
       const groups = groupByDay(section.items);
-      const toggleUrl = `/enfant/${section.child.slug}/toggle`;
       const body = section.error
         ? `<div class="error">${escapeHtml(section.error)}</div>`
         : section.items.length
@@ -179,7 +212,7 @@ export function renderParentPage(sections: ParentChildSection[]): string {
               ([label, groupItems]) => `
                 <div class="day-group">
                   <div class="day-title">${escapeHtml(label)}</div>
-                  ${groupItems.map((item) => renderItem(item, toggleUrl)).join("")}
+                  ${groupItems.map((item) => renderReadOnlyItem(item)).join("")}
                 </div>
               `
             )
@@ -206,9 +239,8 @@ export function renderParentPage(sections: ParentChildSection[]): string {
 </head>
 <body>
   <h1>Devoirs - vue d'ensemble</h1>
-  <p class="subtitle">Aujourd'hui / demain, pour tous les enfants.</p>
+  <p class="subtitle">Aujourd'hui / demain, pour tous les enfants (lecture seule).</p>
   ${blocks}
-  <script>${TOGGLE_SCRIPT}</script>
 </body>
 </html>`;
 }

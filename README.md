@@ -13,10 +13,15 @@ Contexte complet des décisions et de l'historique du projet : voir [CONTEXT.md]
 - `GET /enfant/<slug>` — page dédiée à un enfant (à mettre en page de
   démarrage sur son PC/tablette).
 - `POST /enfant/<slug>/toggle` — coche/décoche un devoir, écrit dans Pronote.
-- `GET /parent` — vue agrégée de tous les enfants, protégée par un token
+- `GET /parent` — vue agrégée de tous les enfants, **en lecture seule**
+  (aucune case à cocher, aucun accès à Pronote en écriture : seuls les
+  enfants via `/enfant/<slug>` modifient le statut). Protégée par un token
   (obligatoire : sans `PARENT_ACCESS_TOKEN` configuré, `/parent` refuse
   l'accès — contrairement à `/enfant/<slug>`, c'est un chemin fixe et
-  devinable, donc pas de mode "ouvert" par défaut).
+  devinable, donc pas de mode "ouvert" par défaut). Ce qu'un enfant vient de
+  cocher "fait" depuis la dernière visite du parent est surligné avec un
+  badge "nouveau" (indicateur visuel simple, pas de notification push/email
+  — voir `src/parentView.ts`).
 
 ## Installation
 

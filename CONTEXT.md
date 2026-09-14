@@ -113,8 +113,9 @@ self-service ni UI pour l'instant — hors scope phase 1).
 2. **Identifiants Pronote de chaque enfant** — à ajouter directement en
    secrets Cloudflare une fois le Worker créé (`wrangler secret put ...`),
    jamais à coller dans une conversation.
-3. **Créer le KV namespace** : `npx wrangler kv namespace create
-   PRONOTE_CACHE`, puis reporter l'id dans `wrangler.toml`.
+3. ~~Créer le KV namespace~~ — fait : `wrangler kv namespace create
+   PRONOTE_CACHE` exécuté, id reporté dans `wrangler.toml` (compte Cloudflare
+   `lemoundiop@gmail.com`, même compte que Mon Menu IA).
 4. **Connecter le repo GitHub à Cloudflare** pour le déploiement auto (comme
    Mon Menu IA), une fois testé en local.
 5. **Configurer les pages en page de démarrage** sur les appareils des
