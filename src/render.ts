@@ -1,6 +1,6 @@
 import type { ChildConfig } from "./children";
-import type { ParentHomeworkItem } from "./parentView";
-import type { HomeworkItem } from "./pronote";
+import type { DisplayItem } from "./displayItems";
+import type { ParentDisplayItem } from "./parentView";
 
 function escapeHtml(value: string): string {
   return value
@@ -72,10 +72,49 @@ const BASE_STYLE = `
   .error { background: #fde8e8; color: #8a1f1f; padding: 12px; border-radius: 8px; margin-bottom: 16px; }
   .child-block { margin-bottom: 32px; }
   .child-name { font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; }
+  .tag {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: white;
+    border-radius: 999px;
+    padding: 1px 8px;
+    vertical-align: middle;
+  }
+  .tag-pronote { background: #2f6fed; }
+  .tag-custom { background: #a855f7; }
+  .add-task-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 10px 0 20px;
+    padding: 10px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+  }
+  .add-task-form input[type="text"] { flex: 1 1 160px; min-width: 0; }
+  .add-task-form input, .add-task-form select, .add-task-form button {
+    font: inherit;
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+  }
+  .add-task-form button {
+    background: #2f6fed;
+    color: white;
+    border: none;
+    cursor: pointer;
+  }
+  .add-task-form button:disabled { opacity: 0.6; cursor: default; }
   @media (prefers-color-scheme: dark) {
     body { background: #17181a; color: #eee; }
     .item { background: #232427; box-shadow: none; }
     .subtitle { color: #999; }
+    .add-task-form { background: #232427; }
+    .add-task-form input, .add-task-form select { background: #17181a; color: #eee; border-color: #444; }
   }
 `;
 
@@ -90,13 +129,19 @@ function safeColor(color: string): string {
   return HEX_COLOR.test(color) ? color : "#999";
 }
 
-/** Case a cocher active : utilisee sur la page enfant, ecrit dans Pronote au clic. */
-function renderEditableItem(item: HomeworkItem, toggleUrl: string): string {
+/** Badge indiquant l'origine de l'element : "Pronote", ou le prenom du parent qui a ajoute la tache. */
+function renderSourceBadge(item: DisplayItem): string {
+  if (item.source === "pronote") return `<span class="tag tag-pronote">Pronote</span>`;
+  return `<span class="tag tag-custom">${escapeHtml(item.author ?? "")}</span>`;
+}
+
+/** Case a cocher active : utilisee sur la page enfant, ecrit dans Pronote (ou la tache perso) au clic. */
+function renderEditableItem(item: DisplayItem, toggleUrl: string): string {
   return `
     <label class="item ${item.done ? "done" : ""}" style="--subject-color:${safeColor(item.color)}">
       <input type="checkbox" ${item.done ? "checked" : ""} data-id="${escapeHtml(item.id)}" data-toggle-url="${escapeHtml(toggleUrl)}" />
       <span>
-        <div class="item-subject">${escapeHtml(item.subject)}</div>
+        <div class="item-subject">${item.source === "pronote" ? `${escapeHtml(item.subject)} ` : ""}${renderSourceBadge(item)}</div>
         <div class="item-desc">${escapeHtml(item.description || "(pas de description)")}</div>
       </span>
     </label>
@@ -105,23 +150,28 @@ function renderEditableItem(item: HomeworkItem, toggleUrl: string): string {
 
 /**
  * Indicateur de statut en lecture seule : utilise sur la page parent. Pas
- * d'input ni d'appel au toggle endpoint, le parent consulte, il ne modifie pas.
- * isNew surligne ce qui vient d'etre coche "fait" depuis la derniere visite
- * de /parent (voir src/parentView.ts) - pas de notification push, juste visuel.
+ * d'input ni d'appel au toggle endpoint, le parent consulte, il ne modifie pas
+ * les devoirs Pronote (il peut en revanche ajouter des taches perso, voir le
+ * formulaire dans renderParentPage). isNew surligne ce qui vient d'etre coche
+ * "fait" depuis la derniere visite de /parent (voir src/parentView.ts) - pas
+ * de notification push, juste visuel.
  */
-function renderReadOnlyItem(item: ParentHomeworkItem): string {
+function renderReadOnlyItem(item: ParentDisplayItem): string {
   return `
     <div class="item ${item.done ? "done" : ""} ${item.isNew ? "new-change" : ""}" style="--subject-color:${safeColor(item.color)}">
       <span class="status-icon" aria-hidden="true">${item.done ? "✅" : "⬜"}</span>
       <span>
-        <div class="item-subject">${escapeHtml(item.subject)} ${item.isNew ? '<span class="new-badge">nouveau</span>' : ""}</div>
+        <div class="item-subject">
+          ${item.source === "pronote" ? `${escapeHtml(item.subject)} ` : ""}${renderSourceBadge(item)}
+          ${item.isNew ? '<span class="new-badge">nouveau</span>' : ""}
+        </div>
         <div class="item-desc">${escapeHtml(item.description || "(pas de description)")}</div>
       </span>
     </div>
   `;
 }
 
-function groupByDay<T extends HomeworkItem>(items: T[]): Map<string, T[]> {
+function groupByDay<T extends { deadline: string }>(items: T[]): Map<string, T[]> {
   const groups = new Map<string, T[]>();
   for (const item of items) {
     const label = dayLabel(item.deadline);
@@ -131,6 +181,48 @@ function groupByDay<T extends HomeworkItem>(items: T[]): Map<string, T[]> {
   }
   return groups;
 }
+
+/**
+ * Ajout d'une tache perso par un parent. Le token d'acces parent (voir
+ * isParentAuthorized dans index.ts) est repris depuis l'URL de la page
+ * (?token=...) pour etre renvoye en header sur cet appel ; si la page a ete
+ * ouverte avec le header x-parent-token uniquement (pas de query string), ce
+ * formulaire n'a pas le token et l'ajout echouera - cas volontairement non
+ * gere pour l'instant (voir README).
+ */
+const ADD_TASK_SCRIPT = `
+  document.addEventListener("submit", async (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || !form.classList.contains("add-task-form")) return;
+    event.preventDefault();
+
+    const url = form.dataset.addTaskUrl;
+    const description = form.elements.namedItem("description");
+    const createdBy = form.elements.namedItem("createdBy");
+    const day = form.elements.namedItem("day");
+    if (!url || !(description instanceof HTMLInputElement) || !(createdBy instanceof HTMLInputElement) || !(day instanceof HTMLSelectElement)) return;
+
+    const submitButton = form.querySelector('button[type="submit"]');
+    const token = new URLSearchParams(location.search).get("token");
+
+    if (submitButton instanceof HTMLButtonElement) submitButton.disabled = true;
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "x-parent-token": token } : {})
+        },
+        body: JSON.stringify({ description: description.value, createdBy: createdBy.value, day: day.value })
+      });
+      if (!response.ok) throw new Error("request failed");
+      location.reload();
+    } catch (error) {
+      alert("Impossible d'ajouter la tache, reessaie.");
+      if (submitButton instanceof HTMLButtonElement) submitButton.disabled = false;
+    }
+  });
+`;
 
 const TOGGLE_SCRIPT = `
   document.addEventListener("change", async (event) => {
@@ -158,7 +250,7 @@ const TOGGLE_SCRIPT = `
   });
 `;
 
-export function renderChildPage(child: ChildConfig, items: HomeworkItem[], error?: string): string {
+export function renderChildPage(child: ChildConfig, items: DisplayItem[], error?: string): string {
   const groups = groupByDay(items);
   const toggleUrl = `/enfant/${child.slug}/toggle`;
 
@@ -196,17 +288,33 @@ export function renderChildPage(child: ChildConfig, items: HomeworkItem[], error
 
 export interface ParentChildSection {
   child: ChildConfig;
-  items: ParentHomeworkItem[];
+  items: ParentDisplayItem[];
   error?: string;
+}
+
+function renderAddTaskForm(child: ChildConfig): string {
+  return `
+    <form class="add-task-form" data-add-task-url="/enfant/${escapeHtml(child.slug)}/tasks">
+      <input type="text" name="description" placeholder="Nouvelle tache..." maxlength="300" required />
+      <input type="text" name="createdBy" placeholder="Maman / Papa" maxlength="30" required list="task-authors" />
+      <datalist id="task-authors"><option value="Maman"></option><option value="Papa"></option></datalist>
+      <select name="day">
+        <option value="today">Aujourd'hui</option>
+        <option value="tomorrow">Demain</option>
+      </select>
+      <button type="submit">Ajouter</button>
+    </form>
+  `;
 }
 
 export function renderParentPage(sections: ParentChildSection[]): string {
   const blocks = sections
     .map((section) => {
       const groups = groupByDay(section.items);
-      const body = section.error
-        ? `<div class="error">${escapeHtml(section.error)}</div>`
-        : section.items.length
+      // L'erreur Pronote (le cas echeant) et les items (devoirs + taches perso, qui
+      // peuvent exister meme si Pronote echoue) s'affichent tous les deux, pas l'un
+      // ou l'autre - une tache perso ne doit pas disparaitre a cause d'un souci Pronote.
+      const itemsHtml = section.items.length
         ? [...groups.entries()]
             .map(
               ([label, groupItems]) => `
@@ -222,7 +330,9 @@ export function renderParentPage(sections: ParentChildSection[]): string {
       return `
         <div class="child-block">
           <div class="child-name">${escapeHtml(section.child.displayName)}</div>
-          ${body}
+          ${renderAddTaskForm(section.child)}
+          ${section.error ? `<div class="error">${escapeHtml(section.error)}</div>` : ""}
+          ${itemsHtml}
         </div>
       `;
     })
@@ -239,8 +349,9 @@ export function renderParentPage(sections: ParentChildSection[]): string {
 </head>
 <body>
   <h1>Devoirs - vue d'ensemble</h1>
-  <p class="subtitle">Aujourd'hui / demain, pour tous les enfants (lecture seule).</p>
+  <p class="subtitle">Aujourd'hui / demain, pour tous les enfants. Devoirs Pronote en lecture seule ; vous pouvez ajouter vos propres taches.</p>
   ${blocks}
+  <script>${ADD_TASK_SCRIPT}</script>
 </body>
 </html>`;
 }

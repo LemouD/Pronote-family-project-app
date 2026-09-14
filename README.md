@@ -11,17 +11,26 @@ Contexte complet des décisions et de l'historique du projet : voir [CONTEXT.md]
 ## Fonctionnalités
 
 - `GET /enfant/<slug>` — page dédiée à un enfant (à mettre en page de
-  démarrage sur son PC/tablette).
-- `POST /enfant/<slug>/toggle` — coche/décoche un devoir, écrit dans Pronote.
-- `GET /parent` — vue agrégée de tous les enfants, **en lecture seule**
-  (aucune case à cocher, aucun accès à Pronote en écriture : seuls les
-  enfants via `/enfant/<slug>` modifient le statut). Protégée par un token
-  (obligatoire : sans `PARENT_ACCESS_TOKEN` configuré, `/parent` refuse
-  l'accès — contrairement à `/enfant/<slug>`, c'est un chemin fixe et
-  devinable, donc pas de mode "ouvert" par défaut). Ce qu'un enfant vient de
-  cocher "fait" depuis la dernière visite du parent est surligné avec un
-  badge "nouveau" (indicateur visuel simple, pas de notification push/email
-  — voir `src/parentView.ts`).
+  démarrage sur son PC/tablette). Mélange les devoirs Pronote et les tâches
+  perso ajoutées par un parent (voir plus bas), chacune étiquetée "Pronote"
+  ou avec le prénom du parent qui l'a ajoutée.
+- `POST /enfant/<slug>/toggle` — coche/décoche un élément (devoir Pronote ou
+  tâche perso, détecté via le préfixe de l'id) ; pour un devoir Pronote, écrit
+  directement dans Pronote.
+- `POST /enfant/<slug>/tasks` — un parent ajoute une tâche perso pour cet
+  enfant (texte libre + qui l'ajoute + aujourd'hui/demain). Stockée à part
+  (KV), sans lien avec Pronote. Même protection que `/parent` (token requis).
+- `GET /parent` — vue agrégée de tous les enfants. **Lecture seule côté
+  Pronote** (aucune case à cocher, aucun accès à Pronote en écriture : seuls
+  les enfants via `/enfant/<slug>` modifient le statut) ; un parent peut en
+  revanche y ajouter des tâches perso via le formulaire en haut de chaque
+  bloc enfant. Protégée par un token (obligatoire : sans
+  `PARENT_ACCESS_TOKEN` configuré, `/parent` refuse l'accès — contrairement à
+  `/enfant/<slug>`, c'est un chemin fixe et devinable, donc pas de mode
+  "ouvert" par défaut). Ce qu'un enfant vient de cocher "fait" (devoir ou
+  tâche perso) depuis la dernière visite du parent est surligné avec un badge
+  "nouveau" (indicateur visuel simple, pas de notification push/email — voir
+  `src/parentView.ts`).
 
 ## Installation
 
