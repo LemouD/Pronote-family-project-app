@@ -146,6 +146,7 @@ export function renderChildPage(child: ChildConfig, items: HomeworkItem[], error
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <title>Devoirs de ${escapeHtml(child.displayName)}</title>
   <style>${BASE_STYLE}</style>
 </head>
@@ -199,6 +200,7 @@ export function renderParentPage(sections: ParentChildSection[]): string {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <title>Devoirs - vue parent</title>
   <style>${BASE_STYLE}</style>
 </head>

@@ -16,6 +16,13 @@ const SECURITY_HEADERS = {
   "cache-control": "private, no-store"
 };
 
+const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Devoirs">
+  <rect width="64" height="64" rx="14" fill="#2f6fed"/>
+  <path d="M16 18h25a7 7 0 0 1 7 7v22H23a7 7 0 0 1-7-7V18Z" fill="#fff"/>
+  <path d="M23 18v22a7 7 0 0 1 7 7h18" fill="none" stroke="#2f6fed" stroke-width="4"/>
+  <path d="m30 32 5 5 10-11" fill="none" stroke="#f5b942" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/>
+</svg>`;
+
 function html(body: string, status = 200): Response {
   return new Response(body, {
     status,
@@ -59,6 +66,12 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
+
+    if (path === "/favicon.svg" && request.method === "GET") {
+      return new Response(FAVICON_SVG, {
+        headers: { "content-type": "image/svg+xml; charset=utf-8", ...SECURITY_HEADERS }
+      });
+    }
 
     if (path === "/" ) {
       return html("<p>Voir /enfant/&lt;slug&gt; ou /parent.</p>");
