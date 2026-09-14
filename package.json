@@ -1,0 +1,25 @@
+{
+  "name": "devoirs-pronote",
+  "version": "0.1.0",
+  "description": "Page de devoirs Pronote pour les enfants + vue agregee pour les parents, sur Cloudflare Worker.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "pawnote": "^1.6.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260911.1",
+    "typescript": "^5.6.0",
+    "wrangler": "^4.0.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "workerd@1.20260911.1": true
+  }
+}

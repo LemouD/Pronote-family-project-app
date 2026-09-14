@@ -1,0 +1,17 @@
+name = "devoirs-pronote"
+main = "src/index.ts"
+compatibility_date = "2024-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Cree avec: npx wrangler kv namespace create PRONOTE_CACHE
+# puis colle l'id retourne ci-dessous.
+[[kv_namespaces]]
+binding = "PRONOTE_CACHE"
+id = "TODO_REMPLACER_APRES_wrangler_kv_namespace_create"
+
+# Secrets a ajouter par enfant (jamais dans ce fichier ni dans une conversation) :
+#   npx wrangler secret put PRONOTE_<PREFIX>_URL
+#   npx wrangler secret put PRONOTE_<PREFIX>_USERNAME
+#   npx wrangler secret put PRONOTE_<PREFIX>_PASSWORD
+# <PREFIX> correspond au champ "secretPrefix" de chaque enfant dans src/children.ts.
+# Optionnel : PARENT_ACCESS_TOKEN pour proteger /parent.

@@ -1,0 +1,13 @@
+# Copier en .dev.vars (jamais commite) pour tester en local avec `npm run dev`.
+# En prod, ces valeurs sont des secrets Cloudflare (wrangler secret put ...), pas des vars.
+
+PRONOTE_ENFANT1_URL=https://xxxxx.index-education.net/pronote/eleve.html?login=true
+PRONOTE_ENFANT1_USERNAME=identifiant.enfant1
+PRONOTE_ENFANT1_PASSWORD=motdepasse
+
+PRONOTE_ENFANT2_URL=https://xxxxx.index-education.net/pronote/eleve.html?login=true
+PRONOTE_ENFANT2_USERNAME=identifiant.enfant2
+PRONOTE_ENFANT2_PASSWORD=motdepasse
+
+# Optionnel : protege /parent avec ?token=... ou header x-parent-token
+PARENT_ACCESS_TOKEN=
