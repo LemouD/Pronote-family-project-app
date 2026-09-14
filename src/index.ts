@@ -1,7 +1,9 @@
-import { children, findChildBySlug } from "./children";
+import { children, findChildBySlug, type ChildConfig } from "./children";
+import { addCustomTask, isCustomTaskId, listCustomTasks, setCustomTaskStatus, validateNewCustomTask } from "./customTasks";
+import { mergeForDisplay } from "./displayItems";
 import type { Env } from "./env";
 import { annotateNewlyDone } from "./parentView";
-import { getHomework, setHomeworkStatus } from "./pronote";
+import { getHomework, type HomeworkItem, setHomeworkStatus } from "./pronote";
 import { renderChildPage, renderParentPage } from "./render";
 
 // Contenu 100% genere cote serveur, pas de ressources externes : une CSP
@@ -53,6 +55,21 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+/**
+ * getHomework peut echouer (Pronote indisponible, secrets manquants, etc.)
+ * sans que ca doive faire disparaitre les taches perso (independantes de
+ * Pronote) de la page : on isole l'echec ici plutot que de le laisser
+ * planter tout le Promise.all appelant.
+ */
+async function getHomeworkSafe(env: Env, child: ChildConfig): Promise<{ items: HomeworkItem[]; error?: string }> {
+  try {
+    return { items: await getHomework(env, child) };
+  } catch (error) {
+    console.error(`getHomework(${child.slug}) failed:`, error);
+    return { items: [], error: "Impossible de recuperer les devoirs pour le moment." };
+  }
+}
+
 function isParentAuthorized(request: Request, env: Env): boolean {
   // Fail-closed : sans token configure, /parent est un chemin fixe et
   // devinable (contrairement a /enfant/<slug>), donc pas de mode "ouvert".
@@ -83,13 +100,8 @@ export default {
       const child = findChildBySlug(childPageMatch[1]);
       if (!child) return html("Page introuvable.", 404);
 
-      try {
-        const items = await getHomework(env, child);
-        return html(renderChildPage(child, items));
-      } catch (error) {
-        console.error(`getHomework(${child.slug}) failed:`, error);
-        return html(renderChildPage(child, [], "Impossible de recuperer les devoirs pour le moment."), 500);
-      }
+      const [{ items: homework, error }, customTasks] = await Promise.all([getHomeworkSafe(env, child), listCustomTasks(env, child)]);
+      return html(renderChildPage(child, mergeForDisplay(homework, customTasks), error), error ? 500 : 200);
     }
 
     const toggleMatch = path.match(/^\/enfant\/([^/]+)\/toggle$/);
@@ -109,11 +121,47 @@ export default {
       }
 
       try {
-        await setHomeworkStatus(env, child, body.id, body.done);
+        if (isCustomTaskId(body.id)) {
+          const found = await setCustomTaskStatus(env, child, body.id, body.done);
+          if (!found) return json({ error: "unknown task" }, 404);
+        } else {
+          await setHomeworkStatus(env, child, body.id, body.done);
+        }
         return json({ ok: true });
       } catch (error) {
-        console.error(`setHomeworkStatus(${child.slug}, ${body.id}) failed:`, error);
+        console.error(`toggle(${child.slug}, ${body.id}) failed:`, error);
         return json({ error: "Impossible d'enregistrer, reessaie." }, 500);
+      }
+    }
+
+    // Ajout d'une tache perso par un parent. Meme controle d'acces que /parent :
+    // un enfant qui connait son propre slug ne peut pas ajouter de taches sans
+    // le PARENT_ACCESS_TOKEN.
+    const addTaskMatch = path.match(/^\/enfant\/([^/]+)\/tasks$/);
+    if (addTaskMatch && request.method === "POST") {
+      if (!isParentAuthorized(request, env)) {
+        return json({ error: "unauthorized" }, 403);
+      }
+
+      const child = findChildBySlug(addTaskMatch[1]);
+      if (!child) return json({ error: "unknown child" }, 404);
+
+      let body: unknown;
+      try {
+        body = await request.json();
+      } catch {
+        return json({ error: "invalid body" }, 400);
+      }
+
+      const input = validateNewCustomTask((body ?? {}) as Record<string, unknown>);
+      if (!input) return json({ error: "invalid task" }, 400);
+
+      try {
+        const task = await addCustomTask(env, child, input);
+        return json({ ok: true, task }, 201);
+      } catch (error) {
+        console.error(`addCustomTask(${child.slug}) failed:`, error);
+        return json({ error: "Impossible d'ajouter la tache, reessaie." }, 500);
       }
     }
 
@@ -124,13 +172,9 @@ export default {
 
       const sections = await Promise.all(
         children.map(async (child) => {
-          try {
-            const items = await getHomework(env, child);
-            return { child, items: await annotateNewlyDone(env, child, items) };
-          } catch (error) {
-            console.error(`getHomework(${child.slug}) failed:`, error);
-            return { child, items: [], error: "Impossible de recuperer les devoirs pour le moment." };
-          }
+          const [{ items: homework, error }, customTasks] = await Promise.all([getHomeworkSafe(env, child), listCustomTasks(env, child)]);
+          const items = await annotateNewlyDone(env, child, mergeForDisplay(homework, customTasks));
+          return { child, items, error };
         })
       );
 

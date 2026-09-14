@@ -1,8 +1,8 @@
 import type { ChildConfig } from "./children";
+import type { DisplayItem } from "./displayItems";
 import type { Env } from "./env";
-import type { HomeworkItem } from "./pronote";
 
-export type ParentHomeworkItem = HomeworkItem & { isNew: boolean };
+export type ParentDisplayItem = DisplayItem & { isNew: boolean };
 
 function seenKey(child: ChildConfig): string {
   return `parent-seen:${child.slug}`;
@@ -14,7 +14,7 @@ function seenKey(child: ChildConfig): string {
  * derniere visite de /parent, puis met a jour cet etat pour la prochaine
  * visite. Pas de vraie notification push : juste un indicateur visuel.
  */
-export async function annotateNewlyDone(env: Env, child: ChildConfig, items: HomeworkItem[]): Promise<ParentHomeworkItem[]> {
+export async function annotateNewlyDone(env: Env, child: ChildConfig, items: DisplayItem[]): Promise<ParentDisplayItem[]> {
   const previouslySeen = (await env.PRONOTE_CACHE.get(seenKey(child), "json")) as Record<string, boolean> | null;
 
   const annotated = items.map((item) => ({
