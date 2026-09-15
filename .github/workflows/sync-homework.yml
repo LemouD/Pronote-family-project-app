@@ -1,0 +1,54 @@
+name: Synchro devoirs Pronote (ENT)
+
+# Synchronise les devoirs de Malick et Codou (etablissement avec ENT, voir
+# CONTEXT.md et bootstrap/sync_homework.py) dans le KV Cloudflare que le
+# Worker lit ensuite. Tourne cote GitHub (gratuit), pas besoin que le PC de
+# la maison soit allume.
+#
+# Horaires en UTC : environ 12h-21h heure de Paris selon la saison (les
+# devoirs cessent d'etre mis a jour par les enseignants en fin de journee,
+# un dernier passage vers 20h suffit ensuite).
+
+on:
+  schedule:
+    - cron: "*/30 10-19 * * *"
+  workflow_dispatch: {} # bouton "Run workflow" pour forcer une synchro immediate
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer les dependances
+        working-directory: bootstrap
+        run: pip install -r requirements.txt
+
+      - name: Synchroniser
+        working-directory: bootstrap
+        env:
+          GH_TOKEN: ${{ secrets.SECRETS_WRITE_TOKEN }}
+
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_KV_NAMESPACE_ID: ${{ secrets.CLOUDFLARE_KV_NAMESPACE_ID }}
+
+          PRONOTE_MALICK_URL: ${{ secrets.PRONOTE_MALICK_URL }}
+          PRONOTE_MALICK_USERNAME: ${{ secrets.PRONOTE_MALICK_USERNAME }}
+          PRONOTE_MALICK_PASSWORD: ${{ secrets.PRONOTE_MALICK_PASSWORD }}
+          PRONOTE_MALICK_UUID: ${{ secrets.PRONOTE_MALICK_UUID }}
+          PRONOTE_MALICK_CLIENT_ID: ${{ secrets.PRONOTE_MALICK_CLIENT_ID }}
+
+          PRONOTE_CODOU_URL: ${{ secrets.PRONOTE_CODOU_URL }}
+          PRONOTE_CODOU_USERNAME: ${{ secrets.PRONOTE_CODOU_USERNAME }}
+          PRONOTE_CODOU_PASSWORD: ${{ secrets.PRONOTE_CODOU_PASSWORD }}
+          PRONOTE_CODOU_UUID: ${{ secrets.PRONOTE_CODOU_UUID }}
+          PRONOTE_CODOU_CLIENT_ID: ${{ secrets.PRONOTE_CODOU_CLIENT_ID }}
+        run: python sync_homework.py

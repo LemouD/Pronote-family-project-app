@@ -106,20 +106,139 @@ elles-mêmes le prénom de leur enfant et l'URL Pronote de leur collège (déjà
 possible techniquement en éditant `src/children.ts` + secrets, mais sans
 self-service ni UI pour l'instant — hors scope phase 1).
 
-## Infos encore manquantes avant de déployer
+## Blocage decouvert : ce college exige l'ENT (Keycloak/CAS)
 
-1. **URL Pronote exacte** de l'établissement — Lémou doit la relever dans la
-   barre d'adresse au prochain login d'un des enfants.
-2. **Identifiants Pronote de chaque enfant** — à ajouter directement en
-   secrets Cloudflare une fois le Worker créé (`wrangler secret put ...`),
-   jamais à coller dans une conversation.
-3. ~~Créer le KV namespace~~ — fait : `wrangler kv namespace create
-   PRONOTE_CACHE` exécuté, id reporté dans `wrangler.toml` (compte Cloudflare
-   `lemoundiop@gmail.com`, même compte que Mon Menu IA).
-4. **Connecter le repo GitHub à Cloudflare** pour le déploiement auto (comme
-   Mon Menu IA), une fois testé en local.
+URL Pronote fournie par Lémou : `https://0921233r.index-education.net/pronote`
+(collège Maréchal Leclerc, Hauts-de-Seine). Vérifié techniquement (appel
+public en lecture seule à `instance()` de pawnote, aucun identifiant utilisé) :
+cette instance impose l'authentification via l'ENT (`casURL` renseigné =
+`https://enc.hauts-de-seine.fr/auth/realms/oze_hds/protocol/cas`, un serveur
+Keycloak). La connexion directe identifiant/mot de passe prévue au départ
+**ne fonctionne pas** ici — `pawnote` ne gère pas l'authentification ENT/CAS
+("ENT native support is not and will never be supported", confirmé dans
+leur doc).
+
+**Recherche faite** (pour ne pas la refaire si on reprend ce sujet) : le
+connecteur Cozy officiel pour Pronote (`konnectors/pronote` sur GitHub,
+actif) gère ce cas via `src/fetch/ENT.js` : connexion CAS avec la lib
+dépréciée `pronote-api`/`pronote-api-maintained` (scraping de formulaire via
+`jsdom`), puis génère un token QR-code Pronote (`JetonAppliMobile`) rebranché
+sur `pawnote` (`loginQrCode`) pour la suite. Le scraping CAS Keycloak
+lui-même est simple et vérifié (formulaire standard, champs `username`/
+`password`, action dynamique avec `session_code`/`execution`/`tab_id`,
+cookies `AUTH_SESSION_ID`/`KC_RESTART`).
+
+**Tentative 1 (abandonnée) : navigateur + QR code → pawnote.** Idée de
+Lémou, meilleure que la piste `jsdom`/`pronote-api` initiale : un vrai
+navigateur (Playwright, local) fait la connexion ENT (Lémou tape ses
+identifiants dans la vraie page, jamais dans notre code), on récupère les
+données du QR code d'appairage "application mobile" que Pronote génère
+lui-même, et on les passe à `pawnote` (`loginQrCode`). **Échec confirmé et
+bien compris**, pas juste "ça ne marche pas" : la requête HTTP que `pawnote`
+fait ensuite vers `mobile.eleve.html` réussit (200 OK) mais renvoie un
+contenu minimal (`Start({"h":...,"a":6})`), sans les données de chiffrement
+attendues. En capturant tout le trafic réseau du vrai navigateur pendant la
+session, on a vu que Pronote moderne (2026.2.6) enchaîne **7 appels
+`appelfonction` + 1 `appelpolling`** après la connexion ENT, tous liés au
+même numéro de session navigateur (`session=NNNNNNN` croissant) — l'appairage
+mobile semble lié à cette session précise, pas réutilisable comme jeton
+autonome. `pawnote` (bibliothèque figée depuis ~1 an) ne reproduit pas cet
+enchaînement.
+
+**Tentative 2 (réussie pour la lecture) : navigateur + QR code → pronotepy.**
+Idée de Lémou : remplacer `pawnote` par [pronotepy](https://github.com/bain3/pronotepy)
+(bibliothèque Python, commit il y a 12 jours contre ~1 an pour `pawnote`)
+pour la partie post-QR. **Ça fonctionne** : `pronotepy.Client.qrcode_login(...)`
+réussit là où `pawnote.loginQrCode` échouait, confirmé sur le vrai compte de
+Codou. Connaissance utile trouvée en marge : `pronotepy` a une doc interne
+(`ObjetCommMessage.js` décompilé de l'appli mobile officielle) sur un
+paramètre "magique" `bydlg=...` que certains ENT exigent — pas notre
+blocage ici, mais utile à savoir.
+
+**Piège découvert et documenté** : les identifiants renvoyés par
+`pronotepy` après une connexion QR (`username`/`password` via
+`export_credentials()`) sont au format "token" propre à pronotepy
+(`login_mode = "token"`, prévu pour son propre `token_login`), **pas
+compatibles avec `pawnote.loginCredentials`** — testé et confirmé en échec
+avec [bootstrap/test_pawnote_bridge.mjs](./bootstrap/test_pawnote_bridge.mjs)
+(gardé dans le repo comme outil de diagnostic si `pawnote` evolue un jour).
+Les deux bibliothèques parlent un dialecte différent du protocole de
+re-connexion.
+
+**Architecture finale retenue** : puisque `pronotepy` (Python) ne peut pas
+tourner sur Cloudflare Workers, on ne cherche plus à unifier les deux
+bibliothèques. À la place, un enfant `externallySynced: true` (voir
+`src/children.ts`) n'est plus jamais contacté en direct par le Worker :
+
+- [bootstrap/login.mjs](./bootstrap/login.mjs) — bootstrap initial (une fois
+  par enfant, ou si le token pronotepy expire) : Playwright fait la
+  connexion ENT, [bootstrap/qr_login.py](./bootstrap/qr_login.py)
+  (pronotepy) termine l'appairage et affiche les identifiants à mettre en
+  secrets GitHub.
+- [bootstrap/sync_homework.py](./bootstrap/sync_homework.py) — tourne côté
+  GitHub Actions ([.github/workflows/sync-homework.yml](./.github/workflows/sync-homework.yml)),
+  plusieurs fois par jour. Lecture seule (jamais d'écriture de statut vers
+  Pronote) : recupère les devoirs via pronotepy et les écrit dans le KV
+  Cloudflare (`homework-external:<slug>`) que le Worker lit ensuite. Comme
+  les identifiants pronotepy tournent à chaque connexion, le script met
+  lui-même à jour les secrets GitHub après chaque synchro (`gh secret set`).
+- `src/pronote.ts` — `getHomework`/`setHomeworkStatus` branchent sur
+  `child.externallySynced` : lecture depuis `homework-external:<slug>` (KV)
+  au lieu de `pawnote`, statut "fait" géré dans `homework-done-overrides:<slug>`
+  (KV) — jamais réécrit vers Pronote, comme confirmé impossible pour ces
+  comptes. Testé en local (`wrangler dev` + KV local) : affichage, coche,
+  persistance après reload — tout fonctionne.
+- Pas besoin d'un "agent IA" de surveillance séparé pour détecter les
+  changements d'ENT (idée initiale de Lémou) : le bandeau d'erreur déjà
+  affiché sur `/enfant` et `/parent` signale déjà clairement les échecs.
+
+**Décision produit de Lémou** (a simplifié le projet) : la coche n'a pas
+besoin de repartir vers Pronote pour ces deux enfants — seule l'appli compte
+pour vérifier ce qui est fait, maman regarde `/parent`, pas Pronote
+directement. D'où le choix "coche locale uniquement" plutôt qu'une file
+d'attente de resynchronisation vers Pronote (plus complexe, pas demandé).
+
+## Infos encore manquantes avant utilisation reelle
+
+0. ~~Demander à l'administration du collège~~ — **refusé** (le collège ne
+   veut pas activer la connexion directe). Confirme qu'on reste sur
+   l'architecture "synchronisation externe" ci-dessus pour Malick et Codou
+   (même collège pour les deux, confirmé par Lémou).
+1. **Bootstrap Codou** : fait, identifiants obtenus (jamais partagés en
+   clair, gardés par Lémou).
+2. **Bootstrap Malick** : pas encore fait — même procédure que Codou
+   (`bootstrap/login.mjs --url ... --child Malick`), même collège donc même
+   URL Pronote de base.
+3. **Secrets GitHub Actions** (voir README section "Établissement avec ENT
+   obligatoire") : à créer — identifiants des 2 enfants, `CLOUDFLARE_ACCOUNT_ID`
+   (`520846e8d495bcd67d54a010b1722618`, déjà connu, pas un secret),
+   `CLOUDFLARE_KV_NAMESPACE_ID` (`7d399b42418b49bc8163fbca3e9d5496`, déjà
+   dans `wrangler.toml`), `CLOUDFLARE_API_TOKEN` (à créer, permission Workers
+   KV Storage:Edit) et `SECRETS_WRITE_TOKEN` (PAT GitHub, permission Secrets:
+   Read and write, pour que le script puisse se mettre à jour lui-même).
+4. **`PARENT_ACCESS_TOKEN`** en prod — pas encore défini, donc `/parent`
+   répond 403 pour l'instant sur le Worker déployé (comportement voulu par
+   défaut, fail-closed).
 5. **Configurer les pages en page de démarrage** sur les appareils des
    enfants une fois les URLs `/enfant/<slug>` stables.
+6. **Personnaliser les slugs** dans `src/children.ts` si besoin (actuellement
+   `malick-K5p0nA65n8L1` / `codou-tBCiBx5FYmTB`, générés aléatoirement,
+   fonctionnels tels quels).
+
+## Deploiement (fait)
+
+- ~~Créer le KV namespace~~ — `PRONOTE_CACHE`, id dans `wrangler.toml`.
+- ~~Connecter le repo GitHub à Cloudflare~~ — Workers Builds configuré
+  (repo `LemouD/Pronote-family-project-app`, branche `master`, build
+  `npm install`, deploy `npx wrangler deploy`). Worker renommé
+  `devoirs-pronote` sur le dashboard pour matcher `wrangler.toml` (l'import
+  l'avait nommé `pronote-family-project-app` d'après le nom du repo).
+  Déploiement initial vérifié : le bundle en prod contient bien le vrai code
+  (slugs, routes, KV) — confirmé via l'API Cloudflare.
+- **Cloudflare Access non activé** volontairement sur ce Worker : ça aurait
+  imposé une connexion avant d'atteindre `/enfant/<slug>`, cassant l'usage
+  sans-friction prévu pour les enfants. La protection reste : slugs
+  non-devinables + `PARENT_ACCESS_TOKEN` fail-closed sur `/parent`.
 
 ## Contexte connexe utile (projet "Mon Menu IA", même compte Cloudflare)
 

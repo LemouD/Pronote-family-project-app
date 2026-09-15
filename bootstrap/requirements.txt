@@ -1,0 +1,2 @@
+pronotepy==2.15.7
+requests==2.32.3

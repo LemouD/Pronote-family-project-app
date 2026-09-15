@@ -26,6 +26,20 @@ function homeworkCacheKey(child: ChildConfig): string {
   return `homework:${child.slug}`;
 }
 
+/** Devoirs tels qu'importes par bootstrap/sync_homework.py (voir CONTEXT.md). */
+function externalHomeworkKey(child: ChildConfig): string {
+  return `homework-external:${child.slug}`;
+}
+
+/**
+ * Statut "fait" gere cote KV pour les enfants en ENT (externallySynced) :
+ * Pronote n'est pas joignable en direct pour eux, donc pas de re-ecriture
+ * possible - on garde juste la coche dans notre appli.
+ */
+function doneOverridesKey(child: ChildConfig): string {
+  return `homework-done-overrides:${child.slug}`;
+}
+
 async function getOrCreateDeviceUUID(env: Env, child: ChildConfig): Promise<string> {
   const existing = await env.PRONOTE_CACHE.get(deviceKey(child));
   if (existing) return existing;
@@ -39,6 +53,7 @@ async function getOrCreateDeviceUUID(env: Env, child: ChildConfig): Promise<stri
  * Ouvre une session Pronote pour cet enfant : reutilise le token stocke en
  * KV si possible (evite de renvoyer le mot de passe a chaque appel), sinon
  * s'authentifie avec identifiant/mot de passe et stocke le nouveau token.
+ * Uniquement pour les enfants en connexion directe (pas externallySynced).
  */
 export async function getSession(env: Env, child: ChildConfig): Promise<SessionHandle> {
   const secrets = readChildSecrets(env, child);
@@ -104,12 +119,7 @@ function toHomeworkItem(assignment: Assignment): HomeworkItem {
   };
 }
 
-/**
- * Devoirs du jour et du lendemain pour un enfant. Resultat mis en cache
- * quelques minutes en KV pour eviter de re-solliciter Pronote a chaque
- * chargement de page.
- */
-export async function getHomework(env: Env, child: ChildConfig, options?: { skipCache?: boolean }): Promise<HomeworkItem[]> {
+async function getHomeworkDirect(env: Env, child: ChildConfig, options?: { skipCache?: boolean }): Promise<HomeworkItem[]> {
   if (!options?.skipCache) {
     const cached = await env.PRONOTE_CACHE.get(homeworkCacheKey(child), "json");
     if (cached) return cached as HomeworkItem[];
@@ -136,10 +146,45 @@ export async function getHomework(env: Env, child: ChildConfig, options?: { skip
 }
 
 /**
- * Ecrit le statut fait/non fait directement dans Pronote (source de verite
- * unique), puis invalide le cache local pour que la page se remette a jour.
+ * Devoirs importes par bootstrap/sync_homework.py, avec le statut "fait"
+ * local applique par-dessus (Pronote lui-meme n'est jamais mis a jour pour
+ * ces enfants, donc son propre champ "done" resterait toujours a false).
+ */
+async function getHomeworkExternallySynced(env: Env, child: ChildConfig): Promise<HomeworkItem[]> {
+  const imported = (await env.PRONOTE_CACHE.get(externalHomeworkKey(child), "json")) as HomeworkItem[] | null;
+  if (!imported) return [];
+
+  const overrides = (await env.PRONOTE_CACHE.get(doneOverridesKey(child), "json")) as Record<string, boolean> | null;
+  if (!overrides) return imported;
+
+  return imported.map((item) => (item.id in overrides ? { ...item, done: overrides[item.id] } : item));
+}
+
+/**
+ * Devoirs du jour et du lendemain pour un enfant. En connexion directe, lus
+ * depuis Pronote (mis en cache quelques minutes) ; pour un enfant en ENT
+ * (externallySynced), lus depuis ce qu'un script externe a importe (voir
+ * src/children.ts).
+ */
+export async function getHomework(env: Env, child: ChildConfig, options?: { skipCache?: boolean }): Promise<HomeworkItem[]> {
+  if (child.externallySynced) return getHomeworkExternallySynced(env, child);
+  return getHomeworkDirect(env, child, options);
+}
+
+/**
+ * Change le statut fait/non-fait. En connexion directe, ecrit dans Pronote
+ * (source de verite) puis invalide le cache. Pour un enfant en ENT
+ * (externallySynced), Pronote n'est pas joignable en direct : le statut est
+ * garde uniquement cote KV, jamais renvoye vers Pronote.
  */
 export async function setHomeworkStatus(env: Env, child: ChildConfig, assignmentId: string, done: boolean): Promise<void> {
+  if (child.externallySynced) {
+    const overrides = ((await env.PRONOTE_CACHE.get(doneOverridesKey(child), "json")) as Record<string, boolean> | null) ?? {};
+    overrides[assignmentId] = done;
+    await env.PRONOTE_CACHE.put(doneOverridesKey(child), JSON.stringify(overrides));
+    return;
+  }
+
   const session = await getSession(env, child);
   await assignmentStatus(session, assignmentId, done);
   await env.PRONOTE_CACHE.delete(homeworkCacheKey(child));

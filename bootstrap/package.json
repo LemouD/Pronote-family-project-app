@@ -1,0 +1,14 @@
+{
+  "name": "devoirs-pronote-bootstrap",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Script local (jamais deploye sur Cloudflare) pour obtenir un token Pronote quand l'etablissement impose l'authentification via l'ENT. Se connecte via un vrai navigateur (vous tapez votre mot de passe dans le vrai formulaire de l'ENT, jamais dans ce script), puis recupere un jeton d'appairage mobile Pronote pour l'utiliser avec pawnote.",
+  "type": "module",
+  "scripts": {
+    "login": "node login.mjs"
+  },
+  "dependencies": {
+    "pawnote": "^1.6.2",
+    "playwright": "^1.48.0"
+  }
+}
