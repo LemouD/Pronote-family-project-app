@@ -239,6 +239,16 @@ d'attente de resynchronisation vers Pronote (plus complexe, pas demandé).
   imposé une connexion avant d'atteindre `/enfant/<slug>`, cassant l'usage
   sans-friction prévu pour les enfants. La protection reste : slugs
   non-devinables + `PARENT_ACCESS_TOKEN` fail-closed sur `/parent`.
+- **Incident du 2026-09-15** : le déploiement auto ne s'était plus déclenché
+  depuis la mise en place initiale (11h14), malgré 2 PR fusionnées le même
+  jour sur `master` — la connexion Git du Worker s'était coupée côté
+  Cloudflare (cause exacte non identifiée). Symptôme : `wrangler deployments
+  list` ne montre aucun nouveau build après une fusion. Corrigé en
+  reconnectant le repo dans Settings → Builds du dashboard Cloudflare. Un
+  déploiement manuel (`npx wrangler deploy`) a servi de solution immédiate
+  pendant le diagnostic. À surveiller : si ça se reproduit, vérifier en
+  premier `wrangler deployments list` juste après une fusion plutôt que de
+  supposer que le déploiement a eu lieu.
 
 ## Contexte connexe utile (projet "Mon Menu IA", même compte Cloudflare)
 
