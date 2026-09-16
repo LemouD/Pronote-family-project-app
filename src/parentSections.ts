@@ -14,6 +14,7 @@ import {
   QUIZ_THEMES
 } from "./actu";
 import { COMPETITIONS, type Team } from "./actuFootball";
+import { GAME_GENRES } from "./actuGames";
 import { ROUTINE_LABEL, type RoutineView } from "./routine";
 import { prayersFor } from "./prayers";
 import { type AccentPreset, DEFAULT_PARENT_PREFERENCES, type ParentPreferences, THEME_LABELS, THEMES } from "./preferences";
@@ -761,6 +762,23 @@ function renderActuSettings(view: ActuSettingsView, childName: string): string {
           <span class="muted">Decoche et l'onglet disparait de son menu.</span></span>
         </label>
         <div class="actu-options">${categories}</div>
+
+        <div class="actu-field">
+          <span class="section-label">Genres de jeux autorises</span>
+          <p class="empty" style="margin:0 0 6px">Aucun genre coche = aucun jeu affiche. Ce choix est le seul filtre : le catalogue ne porte pas de classification d'age.</p>
+          <div class="genre-grid">
+            ${GAME_GENRES.map(
+              (genre) => `
+                <label class="genre-chip">
+                  <input type="checkbox" name="genre" value="${genre.id}"${
+                    view.config.gameGenres.includes(genre.id) ? " checked" : ""
+                  } />
+                  <span>${escapeHtml(genre.label)}</span>
+                </label>
+              `
+            ).join("")}
+          </div>
+        </div>
 
         <div class="actu-field">
           <span class="section-label">Theme du quiz</span>

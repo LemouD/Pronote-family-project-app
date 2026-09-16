@@ -1,4 +1,5 @@
 import type { ChildConfig } from "./children";
+import { GAME_GENRES } from "./actuGames";
 import type { Env } from "./env";
 
 /**
@@ -45,8 +46,8 @@ export const ACTU_CATEGORIES: ActuCategory[] = [
   {
     id: "jeux-video",
     label: "Jeux video",
-    description: "Un jeu mis en avant : jaquette, note, plateformes.",
-    secret: "RAWG_API_KEY"
+    description:
+      "Un jeu gratuit mis en avant. Le catalogue ne porte aucune classification d'age : les genres coches ci-dessous sont le seul filtre."
   },
   {
     id: "quiz",
@@ -111,6 +112,8 @@ export interface ActuConfig {
   active: boolean;
   categories: ActuCategoryId[];
   quizTheme: number;
+  /** Genres de jeux autorises par le parent. Vide = la categorie n'affiche rien. */
+  gameGenres: string[];
   football: FootballChoice | null;
 }
 
@@ -124,7 +127,7 @@ function configKey(child: ChildConfig): string {
  * decide de lui ouvrir.
  */
 function emptyConfig(): ActuConfig {
-  return { active: false, categories: [], quizTheme: DEFAULT_QUIZ_THEME, football: null };
+  return { active: false, categories: [], quizTheme: DEFAULT_QUIZ_THEME, gameGenres: [], football: null };
 }
 
 function readConfig(stored: unknown): ActuConfig {
@@ -150,6 +153,9 @@ function readConfig(stored: unknown): ActuConfig {
       ? ACTU_CATEGORIES.filter((category) => raw.categories?.includes(category.id)).map((category) => category.id)
       : [],
     quizTheme: findQuizTheme(raw.quizTheme)?.id ?? DEFAULT_QUIZ_THEME,
+    gameGenres: Array.isArray(raw.gameGenres)
+      ? GAME_GENRES.filter((genre) => raw.gameGenres?.includes(genre.id)).map((genre) => genre.id)
+      : [],
     football
   };
 }
@@ -173,8 +179,11 @@ export function usableCategories(env: Env, config: ActuConfig): ActuCategory[] {
   return ACTU_CATEGORIES.filter((category) => {
     if (!config.categories.includes(category.id)) return false;
     if (!isCategoryConfigured(env, category)) return false;
-    // Le foot ne sert a rien tant qu'aucun club n'a ete choisi.
+    // Le foot ne sert a rien tant qu'aucun club n'a ete choisi, ni les jeux
+    // tant qu'aucun genre n'est autorise : mieux vaut pas de carte qu'une
+    // carte vide, ou pire, un jeu que personne n'a valide.
     if (category.id === "foot" && !config.football) return false;
+    if (category.id === "jeux-video" && config.gameGenres.length === 0) return false;
     return true;
   });
 }
@@ -224,6 +233,7 @@ const ALLOWED_IMAGE_HOSTS = new Set([
   "apod.nasa.gov",
   "media.rawg.io",
   "crests.football-data.org",
+  "www.freetogame.com",
   "thumb.wikimedia.org",
   "upload.wikimedia.org"
 ]);

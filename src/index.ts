@@ -14,7 +14,7 @@ import {
 } from "./actu";
 import { renderChildActu } from "./actuCards";
 import { findCompetition, getFootballView, getTeams } from "./actuFootball";
-import { getGameHighlight } from "./actuGames";
+import { GAME_GENRES, getGameHighlight } from "./actuGames";
 import { getQuizView, recordAnswer } from "./actuQuiz";
 import { getSpacePicture } from "./actuSpace";
 import { getWikipediaDay } from "./actuWikipedia";
@@ -184,7 +184,7 @@ async function loadActu(env: Env, child: ChildConfig, config: ActuConfig, today:
   const [wikipedia, espace, jeuxVideo, quiz, foot] = await Promise.all([
     active.has("wikipedia") ? getWikipediaDay(env, today) : null,
     active.has("espace") ? getSpacePicture(env, today) : null,
-    active.has("jeux-video") ? getGameHighlight(env, today) : null,
+    active.has("jeux-video") ? getGameHighlight(env, today, config.gameGenres, child.slug) : null,
     active.has("quiz") ? getQuizView(env, child, config.quizTheme, today) : null,
     active.has("foot") && config.football ? getFootballView(env, config.football) : null
   ]);
@@ -205,7 +205,9 @@ async function actuImageUrl(
 
   if (category === "wikipedia") return (await getWikipediaDay(env, today))?.imageUrl ?? null;
   if (category === "espace") return (await getSpacePicture(env, today))?.imageUrl ?? null;
-  if (category === "jeux-video") return (await getGameHighlight(env, today))?.imageUrl ?? null;
+  if (category === "jeux-video") {
+    return (await getGameHighlight(env, today, config.gameGenres, child.slug))?.imageUrl ?? null;
+  }
   if (category === "foot") return config.football?.crest ?? null;
   return null;
 }
@@ -1016,6 +1018,7 @@ export default {
       if (!child) return html("Enfant inconnu.", 400);
 
       const chosen = form.getAll("categorie").map(String);
+      const chosenGenres = form.getAll("genre").map(String);
       const teamId = Number(form.get("teamId"));
       const competition = findCompetition(form.get("championnat"));
       const team = competition && Number.isFinite(teamId) ? (await getTeams(env, competition.code)).find((entry) => entry.id === teamId) : undefined;
@@ -1024,6 +1027,7 @@ export default {
         active: form.get("active") === "on",
         categories: ACTU_CATEGORIES.filter((category) => chosen.includes(category.id)).map((category) => category.id),
         quizTheme: findQuizTheme(form.get("quizTheme"))?.id ?? DEFAULT_QUIZ_THEME,
+        gameGenres: GAME_GENRES.filter((genre) => chosenGenres.includes(genre.id)).map((genre) => genre.id),
         football:
           competition && team
             ? {

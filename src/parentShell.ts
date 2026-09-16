@@ -351,6 +351,15 @@ const PARENT_STYLE = `
   .actu-option.missing { opacity: .75; }
   .actu-missing { font-size: 11.5px; font-weight: 700; color: var(--danger); }
   .actu-field { display: flex; flex-direction: column; gap: 6px; }
+  .genre-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+  .genre-chip {
+    display: flex; align-items: center; gap: 6px; cursor: pointer;
+    font-size: 12.5px; font-weight: 600;
+    padding: 6px 10px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface);
+  }
+  /* L'etat coche se lit sans avoir a viser la case elle-meme. */
+  .genre-chip:has(input:checked) { border-color: var(--accent); color: var(--accent); }
   .actu-field select {
     font: inherit; font-size: 14px;
     min-height: 40px; padding: 8px 12px;

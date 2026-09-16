@@ -60,23 +60,18 @@ function renderSpace(picture: SpacePicture, base: string): string {
 }
 
 function renderGame(game: GameHighlight, base: string): string {
-  const facts = [
-    game.rating ? `Note ${game.rating.toFixed(1)}/5` : null,
-    game.released ? `Sorti le ${escapeHtml(game.released.split("-").reverse().join("/"))}` : null,
-    game.ratingLabel ? `Classe ${escapeHtml(game.ratingLabel)}` : null
-  ].filter((fact): fact is string => fact !== null);
-
   return card({
-    kind: "Jeux video",
-    title: game.name,
+    kind: `Jeux video · ${game.genreLabel}`,
+    title: game.title,
     body: `
-      ${game.imageUrl ? imageTag(base, "jeux-video", game.name) : ""}
-      <div class="actu-chips">${[...game.genres, ...game.platforms]
-        .map((tag) => `<span class="actu-chip">${escapeHtml(tag)}</span>`)
-        .join("")}</div>
-      ${facts.length ? `<p class="actu-text">${facts.join(" · ")}</p>` : ""}
+      ${game.imageUrl ? imageTag(base, "jeux-video", game.title) : ""}
+      <div class="actu-chips">
+        <span class="actu-chip">${escapeHtml(game.platform)}</span>
+        ${game.publisher ? `<span class="actu-chip">${escapeHtml(game.publisher)}</span>` : ""}
+      </div>
+      ${game.description ? `<p class="actu-text">${escapeHtml(game.description)}</p>` : ""}
     `,
-    footer: "RAWG"
+    footer: "FreeToGame - jeu gratuit"
   });
 }
 
