@@ -9,16 +9,57 @@ export { todayInParis } from "./html";
  */
 
 /**
- * Lieu de reference pour le calcul des horaires. Sur toute l'Ile-de-France
- * l'ecart est de l'ordre de deux minutes, donc une seule ville suffit - a
- * changer ici si la famille demenage.
- *
- * method : convention de calcul des angles.
- *   12 = UOIF (Union des organisations islamiques de France)
- *    3 = Ligue islamique mondiale
- *    2 = ISNA (Amerique du Nord)
+ * Lieu de reference pour le calcul des horaires, modifiable par le parent
+ * dans ses Reglages. A l'echelle d'une agglomeration l'ecart est de l'ordre
+ * de deux minutes : une seule ville suffit pour toute la famille.
  */
-export const PRAYER_LOCATION = { city: "Paris", country: "France", method: 12 };
+export interface PrayerLocation {
+  city: string;
+  country: string;
+  /** Convention de calcul des angles (voir CALCULATION_METHODS). */
+  method: number;
+}
+
+export const DEFAULT_PRAYER_LOCATION: PrayerLocation = { city: "Paris", country: "France", method: 12 };
+
+/** Conventions proposees au parent. Liste fermee : Aladhan les numerote. */
+export const CALCULATION_METHODS: { id: number; label: string }[] = [
+  { id: 12, label: "UOIF (France)" },
+  { id: 3, label: "Ligue islamique mondiale" },
+  { id: 2, label: "ISNA (Amerique du Nord)" },
+  { id: 5, label: "Autorite generale egyptienne" },
+  { id: 4, label: "Umm al-Qura (Arabie saoudite)" }
+];
+
+export function findMethod(id: unknown): { id: number; label: string } | undefined {
+  const value = Number(id);
+  return CALCULATION_METHODS.find((method) => method.id === value);
+}
+
+const LOCATION_KEY = "prayer-location";
+const MAX_PLACE_LENGTH = 60;
+
+function cleanPlace(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim().slice(0, MAX_PLACE_LENGTH);
+}
+
+export function validateLocation(input: { city?: unknown; country?: unknown; method?: unknown }): PrayerLocation | null {
+  const city = cleanPlace(input.city);
+  const country = cleanPlace(input.country);
+  const method = findMethod(input.method);
+  if (!city || !country || !method) return null;
+  return { city, country, method: method.id };
+}
+
+export async function getPrayerLocation(env: Env): Promise<PrayerLocation> {
+  const stored = await env.PRONOTE_CACHE.get(LOCATION_KEY, "json");
+  return validateLocation((stored ?? {}) as Record<string, unknown>) ?? DEFAULT_PRAYER_LOCATION;
+}
+
+export async function savePrayerLocation(env: Env, location: PrayerLocation): Promise<void> {
+  await env.PRONOTE_CACHE.put(LOCATION_KEY, JSON.stringify(location));
+}
 
 export interface PrayerConfig {
   /** Identifiant stable, utilise comme cle de stockage - ne pas renommer. */
@@ -47,8 +88,12 @@ const TIMES_CACHE_TTL_SECONDS = 60 * 60 * 36;
 const STATUS_TTL_SECONDS = 60 * 60 * 24 * 90;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-function timesKey(date: string): string {
-  return `prayer-times:${PRAYER_LOCATION.city}:${date}`;
+/**
+ * La cle porte le lieu et la convention : changer de ville ne doit pas servir
+ * les horaires de l'ancienne jusqu'a expiration du cache.
+ */
+function timesKey(location: PrayerLocation, date: string): string {
+  return `prayer-times:${location.city}:${location.method}:${date}`;
 }
 
 function statusKey(child: ChildConfig, date: string): string {
@@ -82,26 +127,39 @@ function readTimings(body: unknown): Record<string, string> | null {
  * checklist doit rester utilisable sans les horaires.
  */
 export async function getPrayerTimes(env: Env, date: string): Promise<Record<string, string> | null> {
-  const cached = (await env.PRONOTE_CACHE.get(timesKey(date), "json")) as Record<string, string> | null;
+  const location = await getPrayerLocation(env);
+
+  const cached = (await env.PRONOTE_CACHE.get(timesKey(location, date), "json")) as Record<string, string> | null;
   if (cached) return cached;
 
+  const times = await fetchTimes(location, date);
+  if (!times) return null;
+
+  await env.PRONOTE_CACHE.put(timesKey(location, date), JSON.stringify(times), { expirationTtl: TIMES_CACHE_TTL_SECONDS });
+  return times;
+}
+
+/**
+ * Interroge Aladhan. Expose separement pour que l'enregistrement d'un nouveau
+ * lieu puisse le verifier avant de l'accepter : une ville mal orthographiee
+ * ferait disparaitre les horaires sans rien dire.
+ */
+export async function fetchTimes(location: PrayerLocation, date: string): Promise<Record<string, string> | null> {
   const [year, month, day] = date.split("-");
   const url = new URL(`https://api.aladhan.com/v1/timingsByCity/${day}-${month}-${year}`);
-  url.searchParams.set("city", PRAYER_LOCATION.city);
-  url.searchParams.set("country", PRAYER_LOCATION.country);
-  url.searchParams.set("method", String(PRAYER_LOCATION.method));
+  url.searchParams.set("city", location.city);
+  url.searchParams.set("country", location.country);
+  url.searchParams.set("method", String(location.method));
 
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!response.ok) return null;
-
-    const times = readTimings(await response.json());
-    if (!times) return null;
-
-    await env.PRONOTE_CACHE.put(timesKey(date), JSON.stringify(times), { expirationTtl: TIMES_CACHE_TTL_SECONDS });
-    return times;
+    if (!response.ok) {
+      console.error(`fetchTimes(${location.city}, ${date}) : Aladhan a repondu ${response.status}`);
+      return null;
+    }
+    return readTimings(await response.json());
   } catch (error) {
-    console.error(`getPrayerTimes(${date}) failed:`, error);
+    console.error(`fetchTimes(${location.city}, ${date}) failed:`, error);
     return null;
   }
 }
