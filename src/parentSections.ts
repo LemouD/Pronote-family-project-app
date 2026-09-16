@@ -3,7 +3,7 @@ import type { ChildConfig } from "./children";
 import { formatGrade, type Series, type SubjectSummary } from "./grades";
 import type { ExamSession } from "./examPrep";
 import type { AppliedExercise, Proposal, TutorNote } from "./homeTutoring";
-import { dayLabel, escapeHtml, relativeTime } from "./html";
+import { dayLabel, escapeHtml, formatSessionDate, relativeTime } from "./html";
 import type { ParentDisplayItem } from "./parentView";
 import { prayersFor } from "./prayers";
 import { type AccentPreset, DEFAULT_PARENT_PREFERENCES, type ParentPreferences, THEME_LABELS, THEMES } from "./preferences";
@@ -423,7 +423,7 @@ function childBadge(entry: { child: ChildConfig; accent: AccentPreset }, subject
 
 function tutorNoteBlock(note: TutorNote): string {
   return `
-    <div class="section-label">Note du prof de maison</div>
+    <div class="section-label">Seance du ${escapeHtml(formatSessionDate(note.createdAt))}</div>
     <div style="font-size:13px;line-height:1.5;margin-bottom:12px;white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(
       note.done || "(non precise)"
     )}</div>

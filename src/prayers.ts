@@ -1,5 +1,6 @@
 import type { ChildConfig } from "./children";
 import type { Env } from "./env";
+export { todayInParis } from "./html";
 
 /**
  * Suivi des prieres du jour, cote enfant. Aucune synchro Pronote ici : une
@@ -40,15 +41,6 @@ export const PRAYERS: PrayerConfig[] = [
 export function prayersFor(child: ChildConfig): PrayerConfig[] {
   if (!child.prayerIds) return PRAYERS;
   return PRAYERS.filter((prayer) => child.prayerIds?.includes(prayer.id));
-}
-
-/**
- * Date du jour a Paris, au format AAAA-MM-JJ. Le Worker tourne en UTC : sans
- * ce decalage, la checklist se remettrait a zero a 1h ou 2h du matin heure
- * francaise au lieu de minuit.
- */
-export function todayInParis(): string {
-  return new Date().toLocaleDateString("fr-CA", { timeZone: "Europe/Paris" });
 }
 
 const TIMES_CACHE_TTL_SECONDS = 60 * 60 * 36;
