@@ -140,6 +140,61 @@ async function callGemini(apiKey: string, payload: unknown): Promise<Response> {
   }
 }
 
+/**
+ * Extrait le texte utile d'une reponse Gemini.
+ *
+ * Les modeles de la generation 3 raisonnent avant de repondre, et ce
+ * raisonnement revient dans des parts marquees thought. Prendre parts[0]
+ * revenait donc a lire le brouillon au lieu de la reponse. On concatene les
+ * parts de contenu et on ignore les autres.
+ *
+ * finishReason est remonte parce qu'il nomme la panne : MAX_TOKENS veut dire
+ * que la reponse a ete coupee en route, ce qu'un JSON tronque ne dit pas.
+ */
+function extractText(body: unknown): { text: string; finishReason: string } {
+  const candidate = (body as {
+    candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] }; finishReason?: string }[];
+  })?.candidates?.[0];
+
+  const text = (candidate?.content?.parts ?? [])
+    .filter((part) => part.thought !== true && typeof part.text === "string")
+    .map((part) => part.text)
+    .join("");
+
+  return { text, finishReason: candidate?.finishReason ?? "" };
+}
+
+/** Le modele encadre parfois son JSON dans un bloc de code malgre le schema impose. */
+function stripCodeFence(text: string): string {
+  const fenced = text.trim().match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  return fenced ? fenced[1].trim() : text.trim();
+}
+
+/**
+ * Analyse la sortie du modele. Traitee comme une donnee non fiable : en cas
+ * d'echec, le message porte finishReason et un extrait, sans quoi la panne
+ * reste indevinable depuis les journaux - ce qui est deja arrive.
+ */
+function parseGeneration(body: unknown): Record<string, unknown> {
+  const { text, finishReason } = extractText(body);
+
+  if (text.length === 0) {
+    throw new GeminiError(`Reponse vide (finishReason=${finishReason || "inconnu"}).`, false);
+  }
+
+  try {
+    return JSON.parse(stripCodeFence(text)) as Record<string, unknown>;
+  } catch {
+    const preview = text.slice(0, 200).replace(/\s+/g, " ");
+    throw new GeminiError(
+      `Reponse illisible (finishReason=${finishReason || "inconnu"}) : ${preview}`,
+      // MAX_TOKENS signale une coupure : reessayer a l'identique ne changerait
+      // rien, c'est la limite de sortie qu'il faut relever.
+      false
+    );
+  }
+}
+
 function buildPrompt(child: ChildConfig, note: TutorNote): string {
   return [
     `Tu prepares un exercice court pour ${child.displayName}, en classe de ${child.schoolYear}.`,
@@ -179,28 +234,15 @@ export async function generateExercise(env: Env, child: ChildConfig, note: Tutor
     contents: [{ role: "user", parts: [{ text: buildPrompt(child, note) }] }],
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 600,
+      // La reflexion du modele consomme ce budget avant la reponse : trop
+      // bas, le JSON arrive tronque et devient illisible.
+      maxOutputTokens: 4000,
       responseMimeType: "application/json",
       responseSchema: RESPONSE_SCHEMA
     }
   });
 
-  const body = (await response.json()) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
-  };
-
-  const raw = body.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (typeof raw !== "string") throw new GeminiError("Reponse Gemini inattendue : aucun texte.", false);
-
-  // Sortie du modele : traitee comme une donnee non fiable. On la parse
-  // defensivement, et l'appelant l'echappe avant affichage.
-  let parsed: { exercice?: unknown };
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new GeminiError("Reponse Gemini inattendue : JSON illisible.", false);
-  }
-
+  const parsed = parseGeneration(await response.json());
   const exercise = typeof parsed.exercice === "string" ? parsed.exercice.trim() : "";
   if (exercise.length === 0) throw new GeminiError("Reponse Gemini inattendue : exercice vide.", false);
 
@@ -251,23 +293,13 @@ export async function generateExamExercise(
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: {
       temperature: 0.8,
-      maxOutputTokens: 1600,
+      maxOutputTokens: 8000,
       responseMimeType: "application/json",
       responseSchema: EXAM_SCHEMA
     }
   });
 
-  const body = (await response.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-  const raw = body.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (typeof raw !== "string") throw new GeminiError("Reponse Gemini inattendue : aucun texte.", false);
-
-  let parsed: { exercice?: unknown; correction?: unknown };
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new GeminiError("Reponse Gemini inattendue : JSON illisible.", false);
-  }
-
+  const parsed = parseGeneration(await response.json());
   const exercise = typeof parsed.exercice === "string" ? parsed.exercice.trim() : "";
   const correction = typeof parsed.correction === "string" ? parsed.correction.trim() : "";
   if (exercise.length === 0 || correction.length === 0) {
