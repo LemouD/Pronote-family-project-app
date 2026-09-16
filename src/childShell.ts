@@ -2,6 +2,7 @@ import type { ChildConfig } from "./children";
 import { fontFace, FONTS } from "./fonts";
 import { escapeHtml } from "./html";
 import { accentVars, type AccentPreset, type ChildPreferences, themeAttribute } from "./preferences";
+import { ACTU_LABEL } from "./actu";
 import { ROUTINE_LABEL } from "./routine";
 import { SIGNAL_BANNER, SIGNAL_SCRIPT, SIGNAL_STYLE } from "./signal";
 
@@ -11,7 +12,7 @@ import { SIGNAL_BANNER, SIGNAL_SCRIPT, SIGNAL_STYLE } from "./signal";
  * cocher - l'oppose de l'espace parent (parentShell.ts).
  */
 
-export type ChildSectionId = "devoirs" | "devoir-maison" | "prieres" | "mon-temps" | "brevet" | "reglages";
+export type ChildSectionId = "devoirs" | "devoir-maison" | "prieres" | "mon-temps" | "brevet" | "actu" | "reglages";
 
 const ICON = `viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"`;
 
@@ -19,7 +20,16 @@ const ICON = `viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width
  * Entrees du menu. "restricted" marque celles reservees a un enfant : elles
  * n'apparaissent que dans son propre menu.
  */
-const MENU: { id: ChildSectionId; label: string; path: string; icon: string; restricted?: boolean }[] = [
+const MENU: {
+  id: ChildSectionId;
+  label: string;
+  path: string;
+  icon: string;
+  /** Reservee a un enfant (le brevet, pour Malick). */
+  restricted?: boolean;
+  /** Ouverte par le parent dans ses reglages, enfant par enfant. */
+  optional?: boolean;
+}[] = [
   {
     id: "devoirs",
     label: "Aujourd'hui",
@@ -50,6 +60,13 @@ const MENU: { id: ChildSectionId; label: string; path: string; icon: string; res
     path: "/brevet",
     icon: `<svg ${ICON}><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>`,
     restricted: true
+  },
+  {
+    id: "actu",
+    label: ACTU_LABEL,
+    path: "/actu",
+    icon: `<svg ${ICON}><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>`,
+    optional: true
   },
   {
     id: "reglages",
@@ -385,6 +402,48 @@ const CHILD_STYLE = `
   .routine-end { text-align: center; padding: 10px 0 4px; }
   .routine-end .big { font-family: 'Baloo 2', system-ui, sans-serif; font-size: 30px; font-weight: 800; margin-bottom: 6px; }
 
+  /* --- Actu --- */
+
+  .actu-card {
+    background: var(--surface); border: 2px solid var(--border);
+    border-radius: 20px; padding: 16px 18px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .actu-kind { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); }
+  .actu-title { font-family: 'Baloo 2', system-ui, sans-serif; font-size: 20px; font-weight: 800; margin: 0; line-height: 1.25; overflow-wrap: anywhere; }
+  .actu-image { width: 100%; height: auto; border-radius: 14px; display: block; background: var(--accent-soft); }
+  .actu-crest { width: 64px; height: 64px; object-fit: contain; align-self: center; }
+  .actu-text { font-size: 15px; font-weight: 600; line-height: 1.55; margin: 0; overflow-wrap: anywhere; }
+  .actu-note { font-size: 14px; font-weight: 700; color: var(--text-secondary); margin: 0; }
+  .actu-label { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; color: var(--text-secondary); }
+  .actu-source { font-size: 11.5px; font-weight: 700; color: var(--text-secondary); }
+
+  .actu-list, .actu-matches { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .actu-list li { font-size: 14px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+  .actu-matches li { display: flex; flex-direction: column; gap: 2px; }
+  .actu-match-teams { font-size: 14.5px; font-weight: 700; overflow-wrap: anywhere; }
+  .actu-match-meta { font-size: 12px; font-weight: 700; color: var(--text-secondary); }
+
+  .actu-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .actu-chip {
+    font-size: 11.5px; font-weight: 800; padding: 5px 10px;
+    border-radius: 999px; background: var(--accent-soft); color: var(--accent);
+  }
+
+  .actu-answers { display: flex; flex-direction: column; gap: 8px; }
+  .actu-answer {
+    font: inherit; font-size: 15px; font-weight: 700; text-align: left;
+    width: 100%; min-height: 50px; padding: 12px 14px;
+    background: var(--bg); color: var(--text);
+    border: 2px solid var(--border); border-radius: 14px; cursor: pointer;
+  }
+  div.actu-answer { cursor: default; }
+  .actu-answer.juste { border-color: #2E7D5B; color: #2E7D5B; }
+  .actu-answer.faux { border-color: var(--error-text); color: var(--error-text); }
+  .actu-verdict { font-size: 14.5px; font-weight: 800; margin: 0; }
+  .actu-verdict.juste { color: #2E7D5B; }
+  .actu-verdict.faux { color: var(--error-text); }
+
 ${SIGNAL_STYLE}
 `;
 
@@ -436,16 +495,23 @@ export function renderCheck(options: { id: string; toggleUrl: string; done: bool
 const BURGER = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>`;
 const CHEVRON = `<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>`;
 
-function visibleMenu(child: ChildConfig) {
+function visibleMenu(context: ChildContext) {
   // Une entree reservee n'apparait que chez l'enfant concerne : Codou ne doit
-  // pas voir le brevet, ni meme savoir qu'il existe.
-  return MENU.filter((entry) => !entry.restricted || child.examPrep);
+  // pas voir le brevet, ni meme savoir qu'il existe. Une entree optionnelle
+  // n'apparait que si le parent l'a ouverte pour cet enfant - pas grisee,
+  // absente.
+  return MENU.filter((entry) => {
+    if (entry.restricted && !context.child.examPrep) return false;
+    if (entry.optional && !context.actuVisible) return false;
+    return true;
+  });
 }
 
-function renderMenu(child: ChildConfig, active: ChildSectionId | null): string {
-  const current = visibleMenu(child).find((entry) => entry.id === active);
+function renderMenu(context: ChildContext, active: ChildSectionId | null): string {
+  const child = context.child;
+  const current = visibleMenu(context).find((entry) => entry.id === active);
 
-  const links = visibleMenu(child)
+  const links = visibleMenu(context)
     .map((entry) => {
       const isActive = entry.id === active;
       return `<a href="/enfant/${escapeHtml(child.slug)}${entry.path}"${isActive ? ' class="active" aria-current="page"' : ""}>${entry.icon}<span>${escapeHtml(entry.label)}</span></a>`;
@@ -464,6 +530,8 @@ export interface ChildContext {
   child: ChildConfig;
   prefs: ChildPreferences;
   accent: AccentPreset;
+  /** La section Actu a-t-elle ete ouverte par le parent pour cet enfant ? */
+  actuVisible: boolean;
 }
 
 export function renderChildShell(options: {
@@ -496,7 +564,7 @@ export function renderChildShell(options: {
 </head>
 <body>
   <div class="page">
-    ${options.active === null ? "" : renderMenu(child, options.active)}
+    ${options.active === null ? "" : renderMenu(options.context, options.active)}
     <div class="head">
       <div class="head-row">
         ${options.headIcon}

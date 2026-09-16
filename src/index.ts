@@ -1,3 +1,23 @@
+import {
+  ACTU_CATEGORIES,
+  type ActuCategoryId,
+  type ActuConfig,
+  findCategory,
+  DEFAULT_QUIZ_THEME,
+  findQuizTheme,
+  isCategoryConfigured,
+  getActuConfig,
+  isActuVisible,
+  proxyImage,
+  saveActuConfig,
+  usableCategories
+} from "./actu";
+import { renderChildActu } from "./actuCards";
+import { findCompetition, getFootballView, getTeams } from "./actuFootball";
+import { getGameHighlight } from "./actuGames";
+import { getQuizView, recordAnswer } from "./actuQuiz";
+import { getSpacePicture } from "./actuSpace";
+import { getWikipediaDay } from "./actuWikipedia";
 import { children, findChildBySlug, findChildByTutorSlug, type ChildConfig } from "./children";
 import { addCustomTask, isCustomTaskId, listCustomTasks, setCustomTaskStatus, validateNewCustomTask } from "./customTasks";
 import { mergeForDisplay } from "./displayItems";
@@ -56,6 +76,7 @@ import {
   renderDevoirs,
   renderDevoirsToolbar,
   renderForbidden,
+  type ActuSettingsView,
   renderDevoirMaison,
   renderNotes,
   renderOverview,
@@ -148,8 +169,45 @@ async function getHomeworkSafe(env: Env, child: ChildConfig): Promise<{ items: H
 
 /** Contexte d'affichage d'un enfant : sa config plus ce qu'il a choisi lui-meme. */
 async function childContext(env: Env, child: ChildConfig): Promise<ChildContext> {
-  const prefs = await getChildPreferences(env, child);
-  return { child, prefs, accent: findAccent(prefs.accentId) };
+  const [prefs, actu] = await Promise.all([getChildPreferences(env, child), getActuConfig(env, child)]);
+  return { child, prefs, accent: findAccent(prefs.accentId), actuVisible: isActuVisible(env, actu) };
+}
+
+/**
+ * Charge les cartes de la section Actu, uniquement pour les categories que le
+ * parent a ouvertes a cet enfant. Les sources sont interrogees en parallele et
+ * chacune peut echouer sans emporter les autres.
+ */
+async function loadActu(env: Env, child: ChildConfig, config: ActuConfig, today: string) {
+  const active = new Set(usableCategories(env, config).map((category) => category.id));
+
+  const [wikipedia, espace, jeuxVideo, quiz, foot] = await Promise.all([
+    active.has("wikipedia") ? getWikipediaDay(env, today) : null,
+    active.has("espace") ? getSpacePicture(env, today) : null,
+    active.has("jeux-video") ? getGameHighlight(env, today) : null,
+    active.has("quiz") ? getQuizView(env, child, config.quizTheme, today) : null,
+    active.has("foot") && config.football ? getFootballView(env, config.football) : null
+  ]);
+
+  return { wikipedia, espace, jeuxVideo, quiz, foot };
+}
+
+/** URL d'image d'une categorie, telle qu'elle a ete mise en cache. */
+async function actuImageUrl(
+  env: Env,
+  child: ChildConfig,
+  config: ActuConfig,
+  category: ActuCategoryId,
+  today: string
+): Promise<string | null> {
+  // Une categorie que le parent n'a pas ouverte ne sert pas ses images.
+  if (!usableCategories(env, config).some((entry) => entry.id === category)) return null;
+
+  if (category === "wikipedia") return (await getWikipediaDay(env, today))?.imageUrl ?? null;
+  if (category === "espace") return (await getSpacePicture(env, today))?.imageUrl ?? null;
+  if (category === "jeux-video") return (await getGameHighlight(env, today))?.imageUrl ?? null;
+  if (category === "foot") return config.football?.crest ?? null;
+  return null;
 }
 
 /**
@@ -321,6 +379,32 @@ async function loadGrades(env: Env): Promise<ChildGrades[]> {
   );
 }
 
+/**
+ * Etat de la section Actu pour la page Reglages. La liste des clubs depend du
+ * championnat que le parent est en train de regarder : elle vient de l'URL
+ * (?championnat-<enfant>=FL1) tant qu'il n'a pas enregistre, du club deja
+ * choisi sinon.
+ */
+async function loadActuSettings(env: Env, url: URL): Promise<ActuSettingsView[]> {
+  return Promise.all(
+    children.map(async (child) => {
+      const config = await getActuConfig(env, child);
+      const asked = url.searchParams.get(`championnat-${child.slug}`);
+      const competition = findCompetition(asked) ?? findCompetition(config.football?.competitionCode);
+
+      return {
+        childSlug: child.slug,
+        config,
+        missingSecrets: ACTU_CATEGORIES.filter((category) => !isCategoryConfigured(env, category)).map(
+          (category) => category.id
+        ),
+        competitionCode: competition?.code ?? null,
+        teams: competition ? await getTeams(env, competition.code) : []
+      };
+    })
+  );
+}
+
 async function renderParentPage(page: ParentPage, env: Env, url: URL, prefs: ParentPreferences): Promise<Response> {
   if (page.section === "notes") {
     return html(
@@ -378,7 +462,14 @@ async function renderParentPage(page: ParentPage, env: Env, url: URL, prefs: Par
     );
   }
 
-  return html(renderParentShell({ prefs, active: "reglages", title: page.title, body: renderReglages(data, prefs) }));
+  return html(
+    renderParentShell({
+      prefs,
+      active: "reglages",
+      title: page.title,
+      body: renderReglages(data, prefs, await loadActuSettings(env, url))
+    })
+  );
 }
 
 export default {
@@ -610,6 +701,45 @@ export default {
 
           if (!updated) return showPage("Cet exercice n'existe plus.", 404);
           return new Response(null, { status: 303, headers: { location: `/enfant/${child.slug}/brevet`, ...NO_STORE } });
+        }
+
+        return html("Page introuvable.", 404);
+      }
+
+      if (sub.startsWith("/actu")) {
+        const today = todayInParis();
+        const config = await getActuConfig(env, child);
+        // Section fermee = page inexistante, pas page vide : l'enfant ne doit
+        // pas deviner qu'il existe un onglet que personne ne lui a ouvert.
+        if (!isActuVisible(env, config)) return html("Page introuvable.", 404);
+
+        if (sub === "/actu" && request.method === "GET") {
+          const [context, content] = await Promise.all([
+            childContext(env, child),
+            loadActu(env, child, config, today)
+          ]);
+          return html(renderChildActu(context, content));
+        }
+
+        // Relais d'images : l'URL vient toujours du cache d'une categorie,
+        // jamais de la requete. Rien d'arbitraire ne peut etre demande ici.
+        const image = sub.match(/^\/actu\/image\/([a-z-]+)$/);
+        if (image && request.method === "GET") {
+          const category = findCategory(image[1]);
+          if (!category) return new Response("Image introuvable.", { status: 404 });
+
+          const source = await actuImageUrl(env, child, config, category.id, today);
+          if (!source) return new Response("Image introuvable.", { status: 404 });
+          return proxyImage(source);
+        }
+
+        if (sub === "/actu/quiz" && request.method === "POST") {
+          const form = await request.formData().catch(() => null);
+          const index = Number(form?.get("reponse"));
+          if (Number.isInteger(index) && index >= 0 && index < 4) {
+            await recordAnswer(env, child, today, index);
+          }
+          return new Response(null, { status: 303, headers: { location: `/enfant/${child.slug}/actu`, ...NO_STORE } });
         }
 
         return html("Page introuvable.", 404);
@@ -872,6 +1002,41 @@ export default {
       }
 
       return html("Page introuvable.", 404);
+    }
+
+    // Configuration de la section Actu, enfant par enfant. Reservee au parent :
+    // c'est lui qui decide ce que ses enfants voient.
+    if (path === "/parent/actu" && request.method === "POST") {
+      if (!isParentAuthorized(request, env)) {
+        return html(renderForbidden(Boolean(env.PARENT_ACCESS_TOKEN)), 403);
+      }
+
+      const form = await request.formData();
+      const child = findChildBySlug(String(form.get("childSlug") ?? ""));
+      if (!child) return html("Enfant inconnu.", 400);
+
+      const chosen = form.getAll("categorie").map(String);
+      const teamId = Number(form.get("teamId"));
+      const competition = findCompetition(form.get("championnat"));
+      const team = competition && Number.isFinite(teamId) ? (await getTeams(env, competition.code)).find((entry) => entry.id === teamId) : undefined;
+
+      await saveActuConfig(env, child, {
+        active: form.get("active") === "on",
+        categories: ACTU_CATEGORIES.filter((category) => chosen.includes(category.id)).map((category) => category.id),
+        quizTheme: findQuizTheme(form.get("quizTheme"))?.id ?? DEFAULT_QUIZ_THEME,
+        football:
+          competition && team
+            ? {
+                competitionCode: competition.code,
+                competitionName: competition.label,
+                teamId: team.id,
+                teamName: team.name,
+                crest: team.crest
+              }
+            : null
+      });
+
+      return new Response(null, { status: 303, headers: { location: "/parent/reglages", ...NO_STORE } });
     }
 
     if (path === "/parent/code" && request.method === "POST") {

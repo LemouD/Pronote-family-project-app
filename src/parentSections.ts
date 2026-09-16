@@ -6,6 +6,14 @@ import type { RecentGrade } from "./grades";
 import type { AppliedExercise, Proposal, TutorNote } from "./homeTutoring";
 import { dayLabel, escapeHtml, formatSessionDate, relativeTime } from "./html";
 import type { ParentDisplayItem } from "./parentView";
+import {
+  ACTU_CATEGORIES,
+  ACTU_LABEL,
+  type ActuCategoryId,
+  type ActuConfig,
+  QUIZ_THEMES
+} from "./actu";
+import { COMPETITIONS, type Team } from "./actuFootball";
 import { ROUTINE_LABEL, type RoutineView } from "./routine";
 import { prayersFor } from "./prayers";
 import { type AccentPreset, DEFAULT_PARENT_PREFERENCES, type ParentPreferences, THEME_LABELS, THEMES } from "./preferences";
@@ -669,7 +677,123 @@ function renderParentPreferencesForm(prefs: ParentPreferences): string {
   `;
 }
 
-export function renderReglages(data: ParentChildData[], prefs: ParentPreferences): string {
+/** Tout ce qu'il faut pour rendre le bloc Actu d'un enfant dans Reglages. */
+export interface ActuSettingsView {
+  childSlug: string;
+  config: ActuConfig;
+  /** Categories cochables mais dont le secret manque sur le Worker. */
+  missingSecrets: ActuCategoryId[];
+  /** Championnat en cours de consultation, pour peupler la liste des clubs. */
+  competitionCode: string | null;
+  teams: Team[];
+}
+
+/**
+ * Bloc de configuration de la section Actu. Tout est eteint au depart : c'est
+ * le parent qui ouvre la section et choisit les categories, jamais l'inverse.
+ *
+ * Le choix du club se fait en deux temps, sans JavaScript : choisir un
+ * championnat recharge la page avec ses clubs, puis on enregistre.
+ */
+function renderActuSettings(view: ActuSettingsView, childName: string): string {
+  const categories = ACTU_CATEGORIES.map((category) => {
+    const missing = view.missingSecrets.includes(category.id);
+    return `
+      <label class="actu-option${missing ? " missing" : ""}">
+        <input type="checkbox" name="categorie" value="${category.id}"${
+          view.config.categories.includes(category.id) ? " checked" : ""
+        } />
+        <span>
+          <b>${escapeHtml(category.label)}</b>
+          <span class="muted">${escapeHtml(category.description)}</span>
+          ${missing ? `<span class="actu-missing">Cle ${escapeHtml(category.secret ?? "")} absente du Worker</span>` : ""}
+        </span>
+      </label>
+    `;
+  }).join("");
+
+  const themes = QUIZ_THEMES.map(
+    (theme) =>
+      `<option value="${theme.id}"${theme.id === view.config.quizTheme ? " selected" : ""}>${escapeHtml(theme.label)}</option>`
+  ).join("");
+
+  const competitions = COMPETITIONS.map(
+    (competition) =>
+      `<option value="${competition.code}"${
+        competition.code === view.competitionCode ? " selected" : ""
+      }>${escapeHtml(competition.label)}</option>`
+  ).join("");
+
+  const teams = view.teams.length
+    ? `<select name="teamId" aria-label="Club de ${escapeHtml(childName)}">
+         <option value="">— choisir un club —</option>
+         ${view.teams
+           .map(
+             (team) =>
+               `<option value="${team.id}"${
+                 team.id === view.config.football?.teamId ? " selected" : ""
+               }>${escapeHtml(team.name)}</option>`
+           )
+           .join("")}
+       </select>`
+    : view.competitionCode
+      // Un championnat est selectionne mais aucun club n'est revenu : c'est
+      // l'API qui n'a pas repondu, pas le parent qui a oublie de choisir.
+      ? `<p class="empty">Aucun club recupere pour ce championnat. Verifie la cle FOOTBALL_API_KEY sur le Worker.</p>`
+      : `<p class="empty">Choisis un championnat ci-dessus et valide pour voir ses clubs.</p>`;
+
+  return `
+    <div style="margin-bottom:14px">
+      <div class="section-label">${escapeHtml(ACTU_LABEL)}</div>
+      <form method="get" action="/parent/reglages" class="actu-field" style="margin-bottom:12px">
+        <span class="section-label">Championnat</span>
+        <select name="championnat-${escapeHtml(view.childSlug)}" aria-label="Championnat de ${escapeHtml(childName)}">
+          <option value="">— aucun —</option>
+          ${competitions}
+        </select>
+        <button type="submit" class="ghost-button">Voir les clubs</button>
+      </form>
+      <form method="post" action="/parent/actu" class="actu-form">
+        <input type="hidden" name="childSlug" value="${escapeHtml(view.childSlug)}" />
+        <label class="actu-option">
+          <input type="checkbox" name="active"${view.config.active ? " checked" : ""} />
+          <span><b>Ouvrir la section pour ${escapeHtml(childName)}</b>
+          <span class="muted">Decoche et l'onglet disparait de son menu.</span></span>
+        </label>
+        <div class="actu-options">${categories}</div>
+
+        <div class="actu-field">
+          <span class="section-label">Theme du quiz</span>
+          <select name="quizTheme" aria-label="Theme du quiz de ${escapeHtml(childName)}">${themes}</select>
+        </div>
+
+        <div class="actu-field">
+          <span class="section-label">Club suivi</span>
+          ${teams}
+          <input type="hidden" name="championnat" value="${escapeHtml(view.competitionCode ?? "")}" />
+          ${
+            view.config.football
+              ? `<p class="empty">Actuellement : ${escapeHtml(view.config.football.teamName)} (${escapeHtml(
+                  view.config.football.competitionName
+                )}).</p>`
+              : ""
+          }
+        </div>
+
+        <button type="submit" class="save-button">Enregistrer</button>
+      </form>
+    </div>
+  `;
+}
+
+/** Rend le bloc Actu d'un enfant, ou rien si sa configuration n'a pas ete chargee. */
+function actuBlockFor(view: ActuSettingsView | undefined, childName: string): string {
+  return view ? renderActuSettings(view, childName) : "";
+}
+
+export function renderReglages(data: ParentChildData[], prefs: ParentPreferences, actu: ActuSettingsView[]): string {
+  const actuByChild = new Map(actu.map((entry) => [entry.childSlug, entry]));
+
   const cards = data
     .map(
       (entry) => `
@@ -722,6 +846,7 @@ export function renderReglages(data: ParentChildData[], prefs: ParentPreferences
               ${entry.child.homeworkSubjects.map((subject) => `<span class="chip">${escapeHtml(subject)}</span>`).join("")}
             </div>
           </div>
+          ${actuBlockFor(actuByChild.get(entry.child.slug), entry.child.displayName)}
           <div style="margin-bottom:14px">
             <div class="section-label">Prieres suivies</div>
             <div class="chip-row">
