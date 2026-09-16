@@ -14,6 +14,7 @@ import {
   QUIZ_THEMES
 } from "./actu";
 import { COMPETITIONS, type Team } from "./actuFootball";
+import { MAX_SUBJECTS } from "./homeTutoring";
 import { GAME_GENRES } from "./actuGames";
 import { ROUTINE_LABEL, type RoutineView } from "./routine";
 import { prayersFor } from "./prayers";
@@ -40,6 +41,8 @@ export interface ParentChildData {
   recentGrades: RecentGrade[];
   /** Routine du jour composee par l'enfant. Lecture seule ici. */
   routine: RoutineView;
+  /** Matieres travaillees avec le prof de maison, modifiables par le parent. */
+  subjects: string[];
 }
 
 /** Au-dela de ce delai sans import reussi, la synchro externe est signalee comme en retard. */
@@ -811,7 +814,59 @@ function actuBlockFor(view: ActuSettingsView | undefined, childName: string): st
   return view ? renderActuSettings(view, childName) : "";
 }
 
-export function renderReglages(data: ParentChildData[], prefs: ParentPreferences, actu: ActuSettingsView[]): string {
+/** Messages d'erreur de l'edition des matieres, ecrits pour le parent. */
+const SUBJECT_ERRORS: Record<string, string> = {
+  invalide: "Nom de matiere vide ou invalide.",
+  doublon: "Cette matiere est deja dans la liste.",
+  "trop-de-matieres": `Maximum ${MAX_SUBJECTS} matieres. Retires-en une avant d'en ajouter.`
+};
+
+/**
+ * Matieres du prof de maison, modifiables par le parent. Tant qu'il n'a rien
+ * change, la liste affichee est celle de children.ts.
+ *
+ * Retirer une matiere n'efface aucune seance passee : elles portent leur
+ * propre libelle, et un historique ne se reecrit pas parce qu'on arrete des
+ * cours.
+ */
+function renderSubjects(entry: ParentChildData): string {
+  const chips = entry.subjects.length
+    ? entry.subjects
+        .map(
+          (subject) => `
+            <form method="post" action="/parent/matieres" class="subject-chip">
+              <input type="hidden" name="childSlug" value="${escapeHtml(entry.child.slug)}" />
+              <input type="hidden" name="retirer" value="${escapeHtml(subject)}" />
+              <span>${escapeHtml(subject)}</span>
+              <button type="submit" aria-label="Retirer ${escapeHtml(subject)}">&times;</button>
+            </form>
+          `
+        )
+        .join("")
+    : `<p class="empty" style="margin:0">Aucune matiere : le prof ne pourra pas enregistrer de seance.</p>`;
+
+  return `
+    <div style="margin-bottom:14px">
+      <div class="section-label">Matieres - devoir maison</div>
+      <div class="chip-row" style="margin-bottom:8px">${chips}</div>
+      <form method="post" action="/parent/matieres" class="pin-set-form">
+        <input type="hidden" name="childSlug" value="${escapeHtml(entry.child.slug)}" />
+        <input type="text" name="matiere" maxlength="40" autocomplete="off"
+               placeholder="Ajouter une matiere" aria-label="Nouvelle matiere pour ${escapeHtml(
+                 entry.child.displayName
+               )}" required />
+        <button type="submit" class="save-button">Ajouter</button>
+      </form>
+    </div>
+  `;
+}
+
+export function renderReglages(
+  data: ParentChildData[],
+  prefs: ParentPreferences,
+  actu: ActuSettingsView[],
+  options: { subjectError?: string } = {}
+): string {
   const actuByChild = new Map(actu.map((entry) => [entry.childSlug, entry]));
 
   const cards = data
@@ -860,12 +915,7 @@ export function renderReglages(data: ParentChildData[], prefs: ParentPreferences
               <button type="submit" class="save-button">${entry.hasTutorPin ? "Changer le code" : "Definir le code"}</button>
             </form>
           </div>
-          <div style="margin-bottom:14px">
-            <div class="section-label">Matieres - devoir maison</div>
-            <div class="chip-row">
-              ${entry.child.homeworkSubjects.map((subject) => `<span class="chip">${escapeHtml(subject)}</span>`).join("")}
-            </div>
-          </div>
+          ${renderSubjects(entry)}
           ${actuBlockFor(actuByChild.get(entry.child.slug), entry.child.displayName)}
           <div style="margin-bottom:14px">
             <div class="section-label">Prieres suivies</div>
@@ -880,7 +930,12 @@ export function renderReglages(data: ParentChildData[], prefs: ParentPreferences
     )
     .join("");
 
+  const error = options.subjectError
+    ? `<div class="notice notice-error">${escapeHtml(SUBJECT_ERRORS[options.subjectError] ?? "Action impossible.")}</div>`
+    : "";
+
   return `
+    ${error}
     ${renderParentPreferencesForm(prefs)}
     ${cards}
     <section class="card">

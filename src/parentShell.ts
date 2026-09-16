@@ -351,6 +351,22 @@ const PARENT_STYLE = `
   .actu-option.missing { opacity: .75; }
   .actu-missing { font-size: 11.5px; font-weight: 700; color: var(--danger); }
   .actu-field { display: flex; flex-direction: column; gap: 6px; }
+  /* Puce de matiere : le libelle et sa croix forment un seul bloc, pour que
+     la cible tactile de suppression soit evidente sans etre piegeuse. */
+  .subject-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 6px 5px 12px; border-radius: 999px;
+    background: var(--surface-alt); border: 1px solid var(--border);
+    font-size: 12.5px; font-weight: 600;
+  }
+  .subject-chip button {
+    font: inherit; font-size: 15px; line-height: 1;
+    width: 22px; height: 22px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; color: var(--text-secondary);
+    border: none; border-radius: 999px; cursor: pointer;
+  }
+  .subject-chip button:hover { background: var(--danger-soft); color: var(--danger); }
   .genre-grid { display: flex; flex-wrap: wrap; gap: 6px; }
   .genre-chip {
     display: flex; align-items: center; gap: 6px; cursor: pointer;

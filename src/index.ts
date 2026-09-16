@@ -45,8 +45,11 @@ import {
   isAppliedExerciseId,
   listApplied,
   listNotes,
+  addSubject,
+  getSubjects,
   listProposals,
   removeApplied,
+  removeSubject,
   removeProposal,
   saveProposal,
   setAppliedStatus,
@@ -258,7 +261,8 @@ async function loadParentData(env: Env): Promise<ParentChildData[]> {
         notes,
         proposals,
         grades,
-        routine
+        routine,
+        subjects
       ] = await Promise.all([
         getHomeworkSafe(env, child),
         listCustomTasks(env, child),
@@ -273,7 +277,8 @@ async function loadParentData(env: Env): Promise<ParentChildData[]> {
         listNotes(env, child),
         listProposals(env, child),
         getGrades(env, child),
-        getRoutine(env, child, today)
+        getRoutine(env, child, today),
+        getSubjects(env, child)
       ]);
       const items = await annotateNewlyDone(env, child, mergeForDisplay(homework, customTasks));
       const proposedNoteIds = new Set(proposals.map((proposal) => proposal.noteId));
@@ -289,7 +294,8 @@ async function loadParentData(env: Env): Promise<ParentChildData[]> {
         examCompleted,
         tutoringPending: notes.filter((note) => !proposedNoteIds.has(note.id)).length + proposals.length,
         recentGrades: recentGrades(grades),
-        routine: routineToView(routine)
+        routine: routineToView(routine),
+        subjects
       };
     })
   );
@@ -469,7 +475,9 @@ async function renderParentPage(page: ParentPage, env: Env, url: URL, prefs: Par
       prefs,
       active: "reglages",
       title: page.title,
-      body: renderReglages(data, prefs, await loadActuSettings(env, url))
+      body: renderReglages(data, prefs, await loadActuSettings(env, url), {
+        subjectError: url.searchParams.get("erreur-matiere") ?? undefined
+      })
     })
   );
 }
@@ -524,24 +532,26 @@ export default {
 
       if (sub === "" && request.method === "GET") {
         const subjectFilter = url.searchParams.get("matiere");
+        const [subjects, notes] = await Promise.all([getSubjects(env, child), listNotes(env, child)]);
         return html(
-          renderTutorPage(child, await listNotes(env, child), {
+          renderTutorPage(child, subjects, notes, {
             saved: url.searchParams.has("ok"),
             // Une matiere inconnue est ignoree plutot que refusee : le
             // filtre est un confort, pas un controle d'acces.
-            subjectFilter: subjectFilter && child.homeworkSubjects.includes(subjectFilter) ? subjectFilter : null
+            subjectFilter: subjectFilter && subjects.includes(subjectFilter) ? subjectFilter : null
           })
         );
       }
 
       if (sub === "" && request.method === "POST") {
         const form = await request.formData();
-        const input = validateTutorNote(child, {
+        const subjects = await getSubjects(env, child);
+        const input = validateTutorNote(subjects, {
           subject: form.get("subject"),
           done: form.get("done"),
           difficulty: form.get("difficulty")
         });
-        if (!input) return html(renderTutorPage(child, await listNotes(env, child)), 400);
+        if (!input) return html(renderTutorPage(child, subjects, await listNotes(env, child)), 400);
 
         try {
           await addNote(env, child, input);
@@ -1008,6 +1018,36 @@ export default {
 
     // Configuration de la section Actu, enfant par enfant. Reservee au parent :
     // c'est lui qui decide ce que ses enfants voient.
+    // Matieres du prof de maison. Reservee au parent : c'est lui qui decide
+    // de ce qui se travaille, pas l'intervenant exterieur.
+    if (path === "/parent/matieres" && request.method === "POST") {
+      if (!isParentAuthorized(request, env)) {
+        return html(renderForbidden(Boolean(env.PARENT_ACCESS_TOKEN)), 403);
+      }
+
+      const form = await request.formData();
+      const child = findChildBySlug(String(form.get("childSlug") ?? ""));
+      if (!child) return html("Enfant inconnu.", 400);
+
+      const back = (errorCode?: string) =>
+        new Response(null, {
+          status: 303,
+          headers: {
+            location: errorCode ? `/parent/reglages?erreur-matiere=${errorCode}` : "/parent/reglages",
+            ...NO_STORE
+          }
+        });
+
+      const toRemove = form.get("retirer");
+      if (typeof toRemove === "string" && toRemove.length > 0) {
+        await removeSubject(env, child, toRemove);
+        return back();
+      }
+
+      const error = await addSubject(env, child, form.get("matiere"));
+      return error ? back(error) : back();
+    }
+
     if (path === "/parent/actu" && request.method === "POST") {
       if (!isParentAuthorized(request, env)) {
         return html(renderForbidden(Boolean(env.PARENT_ACCESS_TOKEN)), 403);

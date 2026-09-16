@@ -73,9 +73,11 @@ export interface NewTutorNote {
 }
 
 /** La matiere doit venir de la liste de l'enfant : le prof ne choisit pas librement. */
-export function validateTutorNote(child: ChildConfig, input: Record<string, unknown>): NewTutorNote | null {
+export function validateTutorNote(subjects: string[], input: Record<string, unknown>): NewTutorNote | null {
   const subject = typeof input.subject === "string" ? input.subject : "";
-  if (!child.homeworkSubjects.includes(subject)) return null;
+  // La matiere doit venir de la liste du parent : le prof choisit dans un
+  // menu, il n'ecrit pas ce qu'il veut.
+  if (!subjects.includes(subject)) return null;
 
   const done = cleanText(input.done, MAX_NOTE_LENGTH);
   const difficulty = cleanText(input.difficulty, MAX_NOTE_LENGTH);
@@ -199,4 +201,67 @@ export async function removeApplied(env: Env, child: ChildConfig, id: string): P
 
   await writeApplied(env, child, remaining);
   return true;
+}
+
+
+/* -------------------------------------------------------------------------
+   Matieres suivies avec le prof de maison
+   ---------------------------------------------------------------------- */
+
+/**
+ * La liste des matieres appartient au parent, pas au code. Tant qu'il n'y a
+ * pas touche, on sert celle de children.ts : rien ne change pour les familles
+ * deja configurees, et il n'y a aucune migration a ecrire.
+ *
+ * Une liste vide enregistree est un choix valable (plus de cours particuliers)
+ * et se distingue de l'absence d'enregistrement.
+ */
+export const MAX_SUBJECTS = 8;
+const MAX_SUBJECT_LENGTH = 40;
+
+function subjectsKey(child: ChildConfig): string {
+  return `tutor-subjects:${child.slug}`;
+}
+
+export async function getSubjects(env: Env, child: ChildConfig): Promise<string[]> {
+  const stored = await env.PRONOTE_CACHE.get(subjectsKey(child), "json");
+  if (!Array.isArray(stored)) return child.homeworkSubjects;
+
+  return stored.filter((entry): entry is string => typeof entry === "string" && entry.length > 0).slice(0, MAX_SUBJECTS);
+}
+
+/** Nettoie une matiere saisie par le parent. Retourne null si elle ne tient pas. */
+export function validateSubject(input: unknown): string | null {
+  if (typeof input !== "string") return null;
+  const subject = input.replace(/\s+/g, " ").trim().slice(0, MAX_SUBJECT_LENGTH);
+  return subject.length > 0 ? subject : null;
+}
+
+export type SubjectError = "invalide" | "doublon" | "trop-de-matieres";
+
+export async function addSubject(env: Env, child: ChildConfig, input: unknown): Promise<SubjectError | null> {
+  const subject = validateSubject(input);
+  if (!subject) return "invalide";
+
+  const subjects = await getSubjects(env, child);
+  if (subjects.length >= MAX_SUBJECTS) return "trop-de-matieres";
+  // Comparaison insensible a la casse : "Maths" et "maths" seraient deux
+  // entrees pour la meme matiere dans le menu du prof.
+  if (subjects.some((entry) => entry.toLowerCase() === subject.toLowerCase())) return "doublon";
+
+  await env.PRONOTE_CACHE.put(subjectsKey(child), JSON.stringify([...subjects, subject]));
+  return null;
+}
+
+/**
+ * Retire une matiere de la liste. Les seances deja enregistrees dans cette
+ * matiere ne bougent pas : elles portent leur propre libelle, et un historique
+ * ne doit pas se reecrire parce qu'on arrete des cours.
+ */
+export async function removeSubject(env: Env, child: ChildConfig, subject: string): Promise<void> {
+  const subjects = await getSubjects(env, child);
+  await env.PRONOTE_CACHE.put(
+    subjectsKey(child),
+    JSON.stringify(subjects.filter((entry) => entry !== subject))
+  );
 }
