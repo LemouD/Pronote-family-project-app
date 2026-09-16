@@ -24,14 +24,44 @@ export interface ChildConfig {
    * enfants). Absent/false = connexion directe habituelle (pawnote).
    */
   externallySynced?: boolean;
+  /** Classe affichee sous le prenom dans l'espace parent, ex. "5e". */
+  schoolYear: string;
+  /**
+   * Couleur d'identification de l'enfant, reprise partout (pastille dans le
+   * tableau des devoirs, avatar, barre de progression). Une variante par
+   * theme : la version claire manque de contraste sur fond sombre.
+   */
+  accent: { light: string; dark: string };
+  accentSoft: { light: string; dark: string };
+  /**
+   * Prieres suivies par cet enfant (identifiants de src/prayers.ts). Absent =
+   * toutes. A restreindre quand un enfant est trop jeune pour les suivre toutes.
+   */
+  prayerIds?: string[];
 }
 
 // Le suffixe aleatoire de chaque slug est genere avec :
 //   node -e "console.log(require('crypto').randomBytes(9).toString('base64url'))"
 // A regenerer avec la meme commande si un slug venait a fuiter.
 export const children: ChildConfig[] = [
-  { slug: "malick-K5p0nA65n8L1", displayName: "Malick", secretPrefix: "MALICK", externallySynced: true },
-  { slug: "codou-tBCiBx5FYmTB", displayName: "Codou", secretPrefix: "CODOU", externallySynced: true }
+  {
+    slug: "malick-K5p0nA65n8L1",
+    displayName: "Malick",
+    secretPrefix: "MALICK",
+    externallySynced: true,
+    schoolYear: "5e",
+    accent: { light: "#0D9488", dark: "#2DD4C6" },
+    accentSoft: { light: "#CCFBF1", dark: "#0F3D3A" }
+  },
+  {
+    slug: "codou-tBCiBx5FYmTB",
+    displayName: "Codou",
+    secretPrefix: "CODOU",
+    externallySynced: true,
+    schoolYear: "4e",
+    accent: { light: "#E0524F", dark: "#FF9B98" },
+    accentSoft: { light: "#FDE2E1", dark: "#4A1E1D" }
+  }
 ];
 
 export function findChildBySlug(slug: string): ChildConfig | undefined {

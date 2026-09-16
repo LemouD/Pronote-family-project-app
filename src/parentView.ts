@@ -9,22 +9,23 @@ function seenKey(child: ChildConfig): string {
 }
 
 /**
- * Compare les devoirs actuels au dernier etat vu par le parent (stocke en
- * KV) pour marquer isNew=true sur ce qui vient d'etre coche "fait" depuis sa
- * derniere visite de /parent, puis met a jour cet etat pour la prochaine
- * visite. Pas de vraie notification push : juste un indicateur visuel.
+ * Marque isNew=true sur ce qui a ete coche "fait" depuis la derniere visite
+ * consommee par le parent. Lecture seule : plusieurs pages de l'espace parent
+ * affichent les memes devoirs, seule celle sur laquelle le parent atterrit
+ * (la vue d'ensemble) consomme l'etat, via markSeen.
  */
 export async function annotateNewlyDone(env: Env, child: ChildConfig, items: DisplayItem[]): Promise<ParentDisplayItem[]> {
   const previouslySeen = (await env.PRONOTE_CACHE.get(seenKey(child), "json")) as Record<string, boolean> | null;
 
-  const annotated = items.map((item) => ({
+  return items.map((item) => ({
     ...item,
     isNew: item.done && previouslySeen?.[item.id] !== true
   }));
+}
 
-  const nextSeen: Record<string, boolean> = {};
-  for (const item of items) nextSeen[item.id] = item.done;
-  await env.PRONOTE_CACHE.put(seenKey(child), JSON.stringify(nextSeen));
-
-  return annotated;
+/** Enregistre l'etat courant comme "vu" : les badges "nouveau" actuels ne reapparaitront plus. */
+export async function markSeen(env: Env, child: ChildConfig, items: DisplayItem[]): Promise<void> {
+  const seen: Record<string, boolean> = {};
+  for (const item of items) seen[item.id] = item.done;
+  await env.PRONOTE_CACHE.put(seenKey(child), JSON.stringify(seen));
 }
