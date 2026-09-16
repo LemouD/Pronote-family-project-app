@@ -19,10 +19,15 @@ import type { TutorNote } from "./homeTutoring";
  */
 
 /**
- * Nom du modele. A ajuster si Google renomme sa gamme : la liste des modeles
- * disponibles est sur ai.google.dev.
+ * Nom du modele.
+ *
+ * Google retire ses anciennes generations : la gamme 2.0 a ete eteinte, et un
+ * appel a un modele retire echoue avec un 404, pas avec un message parlant.
+ * Verifier la liste sur ai.google.dev/gemini-api/docs/models avant de changer,
+ * et se rappeler qu'un modele qui marchait peut cesser de marcher sans que le
+ * code ait bouge.
  */
-const MODEL = "gemini-2.0-flash";
+const MODEL = "gemini-3.8-flash";
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 const TIMEOUT_MS = 20_000;
 
