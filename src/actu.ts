@@ -10,10 +10,11 @@ import type { Env } from "./env";
  * endroit par lequel du texte libre non modere pourrait arriver chez un
  * enfant.
  *
- * Le nom n'est pas arrete ("Actu", "Decouvertes", "Curiosites") : il tient
- * dans cette seule constante.
+ * Le nom affiche tient dans cette seule constante ; "actu" reste le nom de
+ * code des routes, des cles KV et des identifiants, qui n'ont pas a bouger
+ * avec lui.
  */
-export const ACTU_LABEL = "Actu";
+export const ACTU_LABEL = "Mon Radar";
 
 export type ActuCategoryId = "wikipedia" | "espace" | "jeux-video" | "quiz" | "foot";
 
