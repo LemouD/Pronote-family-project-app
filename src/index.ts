@@ -91,7 +91,11 @@ import type { ChildContext } from "./childShell";
 import { annotateNewlyDone, markSeen } from "./parentView";
 import { serveFont } from "./fonts";
 import { getGrades, overallAverage, overallEvolution, recentGrades, subjectEvolution, summarizeBySubject } from "./grades";
-import { getPrayerDay, getPrayerProgress, isKnownPrayerId, setPrayerStatus, todayInParis } from "./prayers";
+import {
+  fetchTimes,
+  getPrayerLocation,
+  savePrayerLocation,
+  validateLocation, getPrayerDay, getPrayerProgress, isKnownPrayerId, setPrayerStatus, todayInParis } from "./prayers";
 import {
   type ChildPreferences,
   findAccent,
@@ -476,7 +480,9 @@ async function renderParentPage(page: ParentPage, env: Env, url: URL, prefs: Par
       active: "reglages",
       title: page.title,
       body: renderReglages(data, prefs, await loadActuSettings(env, url), {
-        subjectError: url.searchParams.get("erreur-matiere") ?? undefined
+        subjectError: url.searchParams.get("erreur-matiere") ?? undefined,
+        prayerLocation: await getPrayerLocation(env),
+        prayerError: url.searchParams.get("erreur-lieu") ?? undefined
       })
     })
   );
@@ -1018,6 +1024,39 @@ export default {
 
     // Configuration de la section Actu, enfant par enfant. Reservee au parent :
     // c'est lui qui decide ce que ses enfants voient.
+    // Lieu de calcul des horaires de priere, commun a la famille.
+    if (path === "/parent/prieres-lieu" && request.method === "POST") {
+      if (!isParentAuthorized(request, env)) {
+        return html(renderForbidden(Boolean(env.PARENT_ACCESS_TOKEN)), 403);
+      }
+
+      const form = await request.formData();
+      const location = validateLocation({
+        city: form.get("city"),
+        country: form.get("country"),
+        method: form.get("method")
+      });
+
+      const back = (errorCode?: string) =>
+        new Response(null, {
+          status: 303,
+          headers: {
+            location: errorCode ? `/parent/reglages?erreur-lieu=${errorCode}` : "/parent/reglages",
+            ...NO_STORE
+          }
+        });
+
+      if (!location) return back("invalide");
+
+      // On interroge Aladhan avant d'accepter : une ville mal orthographiee
+      // ferait disparaitre les horaires sans que personne ne comprenne
+      // pourquoi, et la checklist continuerait de s'afficher sans heures.
+      if (!(await fetchTimes(location, todayInParis()))) return back("introuvable");
+
+      await savePrayerLocation(env, location);
+      return back();
+    }
+
     // Matieres du prof de maison. Reservee au parent : c'est lui qui decide
     // de ce qui se travaille, pas l'intervenant exterieur.
     if (path === "/parent/matieres" && request.method === "POST") {

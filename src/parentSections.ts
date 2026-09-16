@@ -15,6 +15,7 @@ import {
 } from "./actu";
 import { COMPETITIONS, type Team } from "./actuFootball";
 import { MAX_SUBJECTS } from "./homeTutoring";
+import { CALCULATION_METHODS, type PrayerLocation } from "./prayers";
 import { GAME_GENRES } from "./actuGames";
 import { ROUTINE_LABEL, type RoutineView } from "./routine";
 import { prayersFor } from "./prayers";
@@ -814,6 +815,12 @@ function actuBlockFor(view: ActuSettingsView | undefined, childName: string): st
   return view ? renderActuSettings(view, childName) : "";
 }
 
+/** Messages d'erreur du lieu de priere, ecrits pour le parent. */
+const PRAYER_ERRORS: Record<string, string> = {
+  invalide: "Ville, pays et convention sont tous les trois obligatoires.",
+  introuvable: "Aladhan ne connait pas cette ville. Verifie l'orthographe, ou essaie la grande ville la plus proche."
+};
+
 /** Messages d'erreur de l'edition des matieres, ecrits pour le parent. */
 const SUBJECT_ERRORS: Record<string, string> = {
   invalide: "Nom de matiere vide ou invalide.",
@@ -861,11 +868,44 @@ function renderSubjects(entry: ParentChildData): string {
   `;
 }
 
+/**
+ * Lieu de calcul des horaires de priere. Commun a toute la famille : a
+ * l'echelle d'une agglomeration l'ecart est de deux minutes, et personne n'a
+ * envie de le saisir une fois par enfant.
+ */
+function renderPrayerLocation(location: PrayerLocation, error?: string): string {
+  const methods = CALCULATION_METHODS.map(
+    (method) =>
+      `<option value="${method.id}"${method.id === location.method ? " selected" : ""}>${escapeHtml(method.label)}</option>`
+  ).join("");
+
+  return `
+    <section class="card">
+      <div class="card-title">Horaires de priere</div>
+      ${error ? `<div class="notice notice-error" style="margin-bottom:10px">${escapeHtml(error)}</div>` : ""}
+      <p class="empty" style="margin-bottom:10px">Les horaires sont calcules pour cette ville. La convention change les angles retenus pour l'aube et la nuit.</p>
+      <form method="post" action="/parent/prieres-lieu" class="actu-form">
+        <div class="pin-set-form">
+          <input type="text" name="city" maxlength="60" autocomplete="off" required
+                 value="${escapeHtml(location.city)}" aria-label="Ville" placeholder="Ville" />
+          <input type="text" name="country" maxlength="60" autocomplete="off" required
+                 value="${escapeHtml(location.country)}" aria-label="Pays" placeholder="Pays" />
+        </div>
+        <div class="actu-field">
+          <span class="section-label">Convention de calcul</span>
+          <select name="method" aria-label="Convention de calcul">${methods}</select>
+        </div>
+        <button type="submit" class="save-button">Enregistrer</button>
+      </form>
+    </section>
+  `;
+}
+
 export function renderReglages(
   data: ParentChildData[],
   prefs: ParentPreferences,
   actu: ActuSettingsView[],
-  options: { subjectError?: string } = {}
+  options: { subjectError?: string; prayerLocation: PrayerLocation; prayerError?: string }
 ): string {
   const actuByChild = new Map(actu.map((entry) => [entry.childSlug, entry]));
 
@@ -937,6 +977,7 @@ export function renderReglages(
   return `
     ${error}
     ${renderParentPreferencesForm(prefs)}
+    ${renderPrayerLocation(options.prayerLocation, options.prayerError ? PRAYER_ERRORS[options.prayerError] : undefined)}
     ${cards}
     <section class="card">
       <div class="card-title">Installer l'application</div>
