@@ -170,3 +170,18 @@ export function overallAverage(grades: RawGrade[]): number | null {
 export function formatGrade(value: number): string {
   return value.toFixed(1).replace(".", ",");
 }
+
+export interface RecentGrade {
+  subject: string;
+  date: string;
+  /** Note ramenee sur 20, seule echelle comparable entre matieres. */
+  outOf20: number;
+}
+
+/** Les dernieres notes, pour l'apercu de la vue d'ensemble. */
+export function recentGrades(grades: RawGrade[], limit = 3): RecentGrade[] {
+  return grades
+    .slice(-limit)
+    .reverse()
+    .map((grade) => ({ subject: grade.subject, date: grade.date, outOf20: outOf20(grade) }));
+}
