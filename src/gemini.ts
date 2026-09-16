@@ -25,16 +25,37 @@ const MODEL = "gemini-2.0-flash";
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 const TIMEOUT_MS = 20_000;
 
+/**
+ * Les types sont en MAJUSCULES : l'API REST v1beta attend l'enumeration
+ * OpenAPI (OBJECT, STRING...), pas le JSON Schema en minuscules. En
+ * minuscules elle repond 400, et la generation echoue systematiquement.
+ */
 const RESPONSE_SCHEMA = {
-  type: "object",
+  type: "OBJECT",
   properties: {
     exercice: {
-      type: "string",
+      type: "STRING",
       description: "L'enonce complet, pret a etre lu par l'enfant."
     }
   },
   required: ["exercice"]
 };
+
+/**
+ * Message de diagnostic tire de la reponse d'erreur de Google. Seul son champ
+ * error.message est repris : le reste du corps peut contenir la requete, donc
+ * la note du prof, qui n'a rien a faire dans les journaux.
+ */
+async function describeFailure(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as { error?: { message?: unknown; status?: unknown } };
+    const message = typeof body.error?.message === "string" ? body.error.message : "";
+    const status = typeof body.error?.status === "string" ? body.error.status : "";
+    return `${response.status} ${status} ${message}`.trim();
+  } catch {
+    return String(response.status);
+  }
+}
 
 function buildPrompt(child: ChildConfig, note: TutorNote): string {
   return [
@@ -89,11 +110,7 @@ export async function generateExercise(env: Env, child: ChildConfig, note: Tutor
     signal: AbortSignal.timeout(TIMEOUT_MS)
   });
 
-  if (!response.ok) {
-    // Le corps d'erreur de l'API peut contenir la requete : on n'en garde que
-    // le code, pour ne pas recopier la note du prof dans les logs.
-    throw new Error(`Gemini a repondu ${response.status}.`);
-  }
+  if (!response.ok) throw new Error(`Gemini : ${await describeFailure(response)}`);
 
   const body = (await response.json()) as {
     candidates?: { content?: { parts?: { text?: string }[] } }[];
