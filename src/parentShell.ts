@@ -1,5 +1,6 @@
 import { fontFace, FONTS } from "./fonts";
 import { escapeHtml } from "./html";
+import { type ParentPreferences, themeAttribute } from "./preferences";
 import { PARENT_THEME_COLOR, PWA_ASSET_PATHS } from "./pwa";
 
 /**
@@ -10,9 +11,6 @@ import { PARENT_THEME_COLOR, PWA_ASSET_PATHS } from "./pwa";
  */
 
 export type ParentSectionId = "overview" | "devoirs" | "notes" | "devoir-maison" | "reglages";
-
-/** Libelle du compte affiche en bas de la navigation. */
-const ACCOUNT_NAME = "Lemou";
 
 interface NavItem {
   id: ParentSectionId;
@@ -59,11 +57,7 @@ const NAV_ITEMS: NavItem[] = [
   }
 ];
 
-const PARENT_STYLE = `
-  ${fontFace("IBM Plex Sans", FONTS.plexSans, "100 700")}
-
-  :root {
-    color-scheme: light dark;
+const PARENT_LIGHT_TOKENS = `
     --bg: #F7F8FA;
     --surface: #FFFFFF;
     --surface-alt: #F1F2F5;
@@ -80,27 +74,46 @@ const PARENT_STYLE = `
     --danger: #DC2626;
     --danger-soft: #FEE2E2;
     --shadow-chip: 0 1px 2px rgba(0,0,0,.08);
+`;
+
+const PARENT_DARK_TOKENS = `
+    --bg: #0B0F19;
+    --surface: #111827;
+    --surface-alt: #182034;
+    --border: #1F2937;
+    --text: #F3F4F6;
+    --text-secondary: #9CA3AF;
+    --accent: #818CF8;
+    --accent-soft: #1E1B4B;
+    --accent-text: #E0E7FF;
+    --success: #4ADE80;
+    --success-soft: #14532D;
+    --warning: #FBBF24;
+    --warning-soft: #78350F;
+    --danger: #F87171;
+    --danger-soft: #7F1D1D;
+    --shadow-chip: 0 1px 2px rgba(0,0,0,.4);
+`;
+
+const PARENT_STYLE = `
+  ${fontFace("IBM Plex Sans", FONTS.plexSans, "100 700")}
+
+  :root {
+    color-scheme: light dark;
+    ${PARENT_LIGHT_TOKENS}
   }
+  /* Trois etats : "comme l'appareil" (aucun data-theme), clair force, sombre
+     force. Le bloc sombre sert deux fois - la media query pour l'automatique,
+     l'attribut pour le choix explicite. */
   @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0B0F19;
-      --surface: #111827;
-      --surface-alt: #182034;
-      --border: #1F2937;
-      --text: #F3F4F6;
-      --text-secondary: #9CA3AF;
-      --accent: #818CF8;
-      --accent-soft: #1E1B4B;
-      --accent-text: #E0E7FF;
-      --success: #4ADE80;
-      --success-soft: #14532D;
-      --warning: #FBBF24;
-      --warning-soft: #78350F;
-      --danger: #F87171;
-      --danger-soft: #7F1D1D;
-      --shadow-chip: 0 1px 2px rgba(0,0,0,.4);
-    }
+    :root:not([data-theme="light"]) { ${PARENT_DARK_TOKENS} }
+    :root:not([data-theme="light"]) .card,
+    :root:not([data-theme="light"]) .row { --child-accent: var(--c-dark); --child-soft: var(--s-dark); }
   }
+  :root[data-theme="dark"] { ${PARENT_DARK_TOKENS} color-scheme: dark; }
+  :root[data-theme="dark"] .card,
+  :root[data-theme="dark"] .row { --child-accent: var(--c-dark); --child-soft: var(--s-dark); }
+  :root[data-theme="light"] { color-scheme: light; }
 
   * { box-sizing: border-box; }
   body {
@@ -153,7 +166,9 @@ const PARENT_STYLE = `
   .account {
     margin-top: auto; display: flex; align-items: center; gap: 10px;
     padding: 10px 8px; border-top: 1px solid var(--border);
+    color: var(--text); text-decoration: none; border-radius: 8px;
   }
+  .account:hover { background: var(--surface-alt); }
   .avatar {
     width: 30px; height: 30px; flex: 0 0 30px; border-radius: 50%;
     background: var(--accent-soft); color: var(--accent-text);
@@ -186,11 +201,9 @@ const PARENT_STYLE = `
 
   /* Couleur de l'enfant : l'element porte les deux variantes en style inline,
      c'est le CSS qui choisit selon le theme (un style inline l'emporterait
-     sur la media query, donc il ne peut pas decider lui-meme). */
+     sur la media query, donc il ne peut pas decider lui-meme). La bascule
+     sombre est faite plus haut, avec les jetons de theme. */
   .card, .row { --child-accent: var(--c-light); --child-soft: var(--s-light); }
-  @media (prefers-color-scheme: dark) {
-    .card, .row { --child-accent: var(--c-dark); --child-soft: var(--s-dark); }
-  }
 
   .child-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
   .child-avatar {
@@ -278,6 +291,43 @@ const PARENT_STYLE = `
   .grade-headline { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
   .grade-headline strong { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 22px; }
 
+  /* --- Formulaire de reglages --- */
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+  .field input[type="text"] {
+    font: inherit; font-size: 14px; width: 100%; max-width: 280px;
+    min-height: 40px; padding: 8px 12px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface); color: var(--text);
+  }
+  .radio-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .radio-row input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .radio-row label {
+    display: inline-flex; align-items: center;
+    min-height: 40px; padding: 8px 16px; margin: 0;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface); color: var(--text);
+    font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  /* L'etat suit la case cochee, pas une classe rendue par le serveur :
+     sinon cliquer une option ne changerait rien avant l'enregistrement. */
+  .radio-row label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
+  .radio-row label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .save-button {
+    font: inherit; font-size: 13px; font-weight: 600;
+    min-height: 40px; padding: 8px 20px;
+    background: var(--accent); color: #fff;
+    border: none; border-radius: 8px; cursor: pointer;
+  }
+
+  .pin-set-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .pin-set-form input {
+    font: inherit; font-size: 14px; letter-spacing: .2em;
+    width: 140px; min-height: 40px; padding: 8px 12px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface); color: var(--text);
+  }
+
   .chip { background: var(--surface-alt); border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; font-size: 12px; font-weight: 600; }
   .chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
   .section-label { font-size: 11.5px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 8px; }
@@ -338,9 +388,13 @@ export function renderParentShell(options: {
   body: string;
   script?: string;
   pendingReviews?: number;
+  /** Prenom et theme choisis sur CET appareil (voir src/preferences.ts). */
+  prefs: ParentPreferences;
 }): string {
+  const { prefs } = options;
+
   return `<!DOCTYPE html>
-<html lang="fr">
+<html lang="fr"${themeAttribute(prefs.theme)}>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -368,10 +422,10 @@ export function renderParentShell(options: {
         </div>
       </div>
       <nav class="nav">${renderNav(options.active, options.pendingReviews ?? 0)}</nav>
-      <div class="account">
-        <div class="avatar">${escapeHtml(ACCOUNT_NAME.slice(0, 1))}</div>
-        <div class="account-name">${escapeHtml(ACCOUNT_NAME)}</div>
-      </div>
+      <a class="account" href="/parent/reglages">
+        <div class="avatar">${escapeHtml(prefs.name.slice(0, 1).toUpperCase())}</div>
+        <div class="account-name">${escapeHtml(prefs.name)}</div>
+      </a>
     </aside>
     <main class="main">
       <div class="topbar">
