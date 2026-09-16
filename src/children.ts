@@ -27,12 +27,17 @@ export interface ChildConfig {
   /** Classe affichee sous le prenom dans l'espace parent, ex. "5e". */
   schoolYear: string;
   /**
-   * Couleur d'identification de l'enfant, reprise partout (pastille dans le
-   * tableau des devoirs, avatar, barre de progression). Une variante par
-   * theme : la version claire manque de contraste sur fond sombre.
+   * Couleur et avatar de depart, dans les listes de src/preferences.ts.
+   * L'enfant peut les changer lui-meme depuis sa page de reglages ; ce qui
+   * est defini ici ne sert que tant qu'il n'a rien choisi.
    */
-  accent: { light: string; dark: string };
-  accentSoft: { light: string; dark: string };
+  defaultAccentId: string;
+  defaultAvatar: string;
+  /**
+   * Planche d'avatars proposee a cet enfant, selon ses centres d'interet.
+   * C'est du contenu : ajouter ou retirer un emoji ici suffit.
+   */
+  avatars: string[];
   /**
    * Prieres suivies par cet enfant (identifiants de src/prayers.ts). Absent =
    * toutes. A restreindre quand un enfant est trop jeune pour les suivre toutes.
@@ -49,18 +54,22 @@ export const children: ChildConfig[] = [
     displayName: "Malick",
     secretPrefix: "MALICK",
     externallySynced: true,
-    schoolYear: "5e",
-    accent: { light: "#0D9488", dark: "#2DD4C6" },
-    accentSoft: { light: "#CCFBF1", dark: "#0F3D3A" }
+    schoolYear: "3e",
+    defaultAccentId: "turquoise",
+    defaultAvatar: "⚽",
+    // Foot et manga.
+    avatars: ["⚽", "🏆", "👟", "🥅", "🧤", "🥇", "🍥", "🐉", "🗡️", "🥷", "🔥", "🍜"]
   },
   {
     slug: "codou-tBCiBx5FYmTB",
     displayName: "Codou",
     secretPrefix: "CODOU",
     externallySynced: true,
-    schoolYear: "4e",
-    accent: { light: "#E0524F", dark: "#FF9B98" },
-    accentSoft: { light: "#FDE2E1", dark: "#4A1E1D" }
+    schoolYear: "5e",
+    defaultAccentId: "corail",
+    defaultAvatar: "🎤",
+    // K-pop.
+    avatars: ["🎤", "🎧", "💜", "🩷", "🎀", "💃", "🦋", "✨", "🧋", "🐰", "🎶", "⭐"]
   }
 ];
 

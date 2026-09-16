@@ -1,9 +1,10 @@
 import { renderLineChart } from "./charts";
 import type { ChildConfig } from "./children";
 import { formatGrade, type Series, type SubjectSummary } from "./grades";
-import { dayLabel, escapeHtml, relativeTime, safeColor } from "./html";
+import { dayLabel, escapeHtml, relativeTime } from "./html";
 import type { ParentDisplayItem } from "./parentView";
 import { prayersFor } from "./prayers";
+import { type AccentPreset, DEFAULT_PARENT_PREFERENCES, type ParentPreferences, THEME_LABELS, THEMES } from "./preferences";
 import type { ExternalSyncStatus } from "./pronote";
 
 export interface ParentChildData {
@@ -12,6 +13,10 @@ export interface ParentChildData {
   error?: string;
   sync: ExternalSyncStatus;
   prayers: { done: number; total: number };
+  /** Couleur choisie par l'enfant dans ses propres reglages. */
+  accent: AccentPreset;
+  /** false = la page de cet enfant est inaccessible tant qu'aucun code n'est defini. */
+  hasPin: boolean;
 }
 
 /** Au-dela de ce delai sans import reussi, la synchro externe est signalee comme en retard. */
@@ -23,10 +28,10 @@ const SYNC_STALE_AFTER_HOURS = 8;
  * ensuite la variante selon le theme (un style inline gagnerait sur la media
  * query, donc on expose les deux et c'est le CSS qui tranche).
  */
-function childColorVars(child: ChildConfig): string {
+function childColorVars(accent: AccentPreset): string {
   return (
-    `--c-light:${safeColor(child.accent.light)};--c-dark:${safeColor(child.accent.dark)};` +
-    `--s-light:${safeColor(child.accentSoft.light)};--s-dark:${safeColor(child.accentSoft.dark)}`
+    `--c-light:${accent.light};--c-dark:${accent.dark};` +
+    `--s-light:${accent.softLight};--s-dark:${accent.softDark}`
   );
 }
 
@@ -69,7 +74,7 @@ export function renderOverview(data: ParentChildData[]): string {
       const percent = total === 0 ? 0 : Math.round((done / total) * 100);
 
       return `
-        <section class="card" style="${childColorVars(entry.child)}">
+        <section class="card" style="${childColorVars(entry.accent)}">
           <div class="child-head">
             <div class="child-avatar">${escapeHtml(entry.child.displayName.slice(0, 1))}</div>
             <div>
@@ -101,8 +106,15 @@ export function renderOverview(data: ParentChildData[]): string {
     })
     .join("");
 
-  const alerts = data
-    .map((entry) => syncAlert(entry))
+  const missingPin = data
+    .filter((entry) => !entry.hasPin)
+    .map((entry) => ({
+      level: "danger" as const,
+      title: `Aucun code pour ${entry.child.displayName}`,
+      detail: "Sa page est bloquee tant que tu ne lui en donnes pas un, dans Reglages."
+    }));
+
+  const alerts = [...missingPin, ...data.map((entry) => syncAlert(entry))]
     .map(
       (alert) => `
         <div class="alert alert-${alert.level}">
@@ -217,7 +229,7 @@ export function renderDevoirs(data: ParentChildData[], filters: DevoirsFilters):
   const body = rows
     .map(
       ({ entry, item }) => `
-        <div class="row ${item.done ? "row-done" : ""}" style="${childColorVars(entry.child)}">
+        <div class="row ${item.done ? "row-done" : ""}" style="${childColorVars(entry.accent)}">
           <div class="row-child"><span class="dot"></span>${escapeHtml(entry.child.displayName)}</div>
           <div class="row-muted row-subject">${escapeHtml(item.source === "pronote" ? item.subject : (item.author ?? "Tache"))}</div>
           <div class="row-text">${escapeHtml(item.description || "(pas de description)")}</div>
@@ -295,6 +307,8 @@ const TREND_DOWN = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 
 export interface ChildGrades {
   child: ChildConfig;
+  /** Couleur choisie par l'enfant, pour rester coherent avec les autres pages. */
+  accent: AccentPreset;
   overall: number | null;
   subjects: SubjectSummary[];
   overallSeries: Series;
@@ -306,7 +320,7 @@ export function renderNotes(data: ChildGrades[]): string {
     .map((entry) => {
       if (entry.subjects.length === 0) {
         return `
-          <section class="card" style="${childColorVars(entry.child)}">
+          <section class="card" style="${childColorVars(entry.accent)}">
             <div class="child-head" style="margin-bottom:12px">
               <div class="child-avatar" style="width:34px;height:34px;flex-basis:34px;font-size:13px">${escapeHtml(entry.child.displayName.slice(0, 1))}</div>
               <div class="child-name">${escapeHtml(entry.child.displayName)}</div>
@@ -344,7 +358,7 @@ export function renderNotes(data: ChildGrades[]): string {
         .join("");
 
       return `
-        <section class="card" style="${childColorVars(entry.child)}">
+        <section class="card" style="${childColorVars(entry.accent)}">
           <div class="child-head" style="margin-bottom:12px">
             <div class="child-avatar" style="width:34px;height:34px;flex-basis:34px;font-size:13px">${escapeHtml(entry.child.displayName.slice(0, 1))}</div>
             <div class="child-name">${escapeHtml(entry.child.displayName)}</div>
@@ -379,11 +393,47 @@ export function renderComingSoon(title: string, description: string): string {
   `;
 }
 
-export function renderReglages(data: ParentChildData[]): string {
+/**
+ * Reglages propres a CET appareil. Maman et Papa partagent le meme token
+ * d'acces : un prenom stocke cote serveur serait ecrase par l'autre, donc il
+ * vit dans un cookie et chacun installe l'application avec le sien.
+ */
+function renderParentPreferencesForm(prefs: ParentPreferences): string {
+  const themeChoices = THEMES.map(
+    (theme) => `
+      <label>
+        <input type="radio" name="theme" value="${escapeHtml(theme)}" ${prefs.theme === theme ? "checked" : ""} />
+        ${escapeHtml(THEME_LABELS[theme])}
+      </label>
+    `
+  ).join("");
+
+  return `
+    <section class="card">
+      <div class="card-title">Cet appareil</div>
+      <form method="post" action="/parent/reglages">
+        <div class="field">
+          <label for="parent-name">Votre prenom</label>
+          <input type="text" id="parent-name" name="name" maxlength="20" value="${escapeHtml(prefs.name)}" placeholder="${escapeHtml(
+            DEFAULT_PARENT_PREFERENCES.name
+          )}" />
+        </div>
+        <div class="field">
+          <label>Affichage</label>
+          <div class="radio-row">${themeChoices}</div>
+        </div>
+        <button type="submit" class="save-button">Enregistrer</button>
+      </form>
+      <p class="empty" style="margin-top:12px">Ces deux reglages ne valent que sur cet appareil : Maman et Papa peuvent avoir chacun le sien.</p>
+    </section>
+  `;
+}
+
+export function renderReglages(data: ParentChildData[], prefs: ParentPreferences): string {
   const cards = data
     .map(
       (entry) => `
-        <section class="card" style="${childColorVars(entry.child)}">
+        <section class="card" style="${childColorVars(entry.accent)}">
           <div class="child-head" style="margin-bottom:16px">
             <div class="child-avatar" style="width:34px;height:34px;flex-basis:34px;font-size:13px">${escapeHtml(entry.child.displayName.slice(0, 1))}</div>
             <div class="child-name">${escapeHtml(entry.child.displayName)}</div>
@@ -395,6 +445,20 @@ export function renderReglages(data: ParentChildData[]): string {
               <span class="chip">${entry.sync.externallySynced ? "Synchro externe (ENT)" : "Connexion directe"}</span>
               <span class="chip">${escapeHtml(entry.sync.syncedAt ? `Derniere synchro ${relativeTime(entry.sync.syncedAt)}` : "Jamais synchronise")}</span>
             </div>
+          </div>
+          <div style="margin-bottom:14px">
+            <div class="section-label">Code d'acces</div>
+            ${
+              entry.hasPin
+                ? '<p class="empty" style="margin-bottom:8px">Un code est defini. En saisir un nouveau deconnecte tous ses appareils.</p>'
+                : '<div class="alert alert-danger" style="margin-bottom:8px"><div class="alert-bar"></div><div><div class="alert-title">Aucun code defini</div><div class="alert-detail">Sa page est bloquee tant qu\'il n\'en a pas un.</div></div></div>'
+            }
+            <form method="post" action="/parent/code" class="pin-set-form">
+              <input type="hidden" name="childSlug" value="${escapeHtml(entry.child.slug)}" />
+              <input type="text" name="pin" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" autocomplete="off"
+                     placeholder="5 chiffres" aria-label="Code de ${escapeHtml(entry.child.displayName)}" required />
+              <button type="submit" class="save-button">${entry.hasPin ? "Changer le code" : "Definir le code"}</button>
+            </form>
           </div>
           <div style="margin-bottom:14px">
             <div class="section-label">Prieres suivies</div>
@@ -414,6 +478,7 @@ export function renderReglages(data: ParentChildData[]): string {
     .join("");
 
   return `
+    ${renderParentPreferencesForm(prefs)}
     ${cards}
     <section class="card">
       <div class="card-title">Installer l'application</div>

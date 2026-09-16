@@ -1,6 +1,7 @@
 import type { ChildConfig } from "./children";
 import { fontFace, FONTS } from "./fonts";
-import { escapeHtml, safeColor } from "./html";
+import { escapeHtml } from "./html";
+import { accentVars, type AccentPreset, type ChildPreferences, themeAttribute } from "./preferences";
 
 /**
  * Coquille de l'espace enfant : fond creme, coins ronds, gros reperes
@@ -27,12 +28,7 @@ const TABS: { id: ChildSectionId; label: string; path: string; icon: string }[] 
   }
 ];
 
-const CHILD_STYLE = `
-  ${fontFace("Nunito", FONTS.nunito, "400 800")}
-  ${fontFace("Baloo 2", FONTS.baloo2, "400 800")}
-
-  :root {
-    color-scheme: light dark;
+const CHILD_LIGHT_TOKENS = `
     --bg: #FFF8EC;
     --surface: #FFFFFF;
     --border: #F0E3D0;
@@ -40,18 +36,39 @@ const CHILD_STYLE = `
     --text-secondary: #8A7A6D;
     --accent: var(--accent-light);
     --accent-soft: var(--accent-soft-light);
+    --error-bg: #FDE2E1;
+    --error-text: #8A1F1F;
+`;
+
+const CHILD_DARK_TOKENS = `
+    --bg: #241C15;
+    --surface: #33281F;
+    --border: #4A3B2E;
+    --text: #FDF3E7;
+    --text-secondary: #C9B8A8;
+    --accent: var(--accent-dark);
+    --accent-soft: var(--accent-soft-dark);
+    --error-bg: #4A1E1D;
+    --error-text: #FFC9C7;
+`;
+
+const CHILD_STYLE = `
+  ${fontFace("Nunito", FONTS.nunito, "400 800")}
+  ${fontFace("Baloo 2", FONTS.baloo2, "400 800")}
+
+  /* Trois etats de theme : "comme l'appareil" (aucun data-theme), clair force,
+     sombre force. Le bloc sombre apparait deux fois - une fois derriere la
+     media query pour le mode automatique, une fois pour le choix explicite. */
+  :root {
+    color-scheme: light dark;
+    ${CHILD_LIGHT_TOKENS}
   }
   @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #241C15;
-      --surface: #33281F;
-      --border: #4A3B2E;
-      --text: #FDF3E7;
-      --text-secondary: #C9B8A8;
-      --accent: var(--accent-dark);
-      --accent-soft: var(--accent-soft-dark);
-    }
+    :root:not([data-theme="light"]) { ${CHILD_DARK_TOKENS} }
   }
+  :root[data-theme="dark"] { ${CHILD_DARK_TOKENS} }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
 
   * { box-sizing: border-box; }
   body {
@@ -123,8 +140,66 @@ const CHILD_STYLE = `
   .summary-value { font-family: 'Baloo 2', system-ui, sans-serif; font-weight: 800; font-size: 18px; color: var(--accent); }
 
   .empty { color: var(--text-secondary); font-weight: 600; font-size: 15px; text-align: center; padding: 24px 0; }
-  .error { background: #FDE2E1; color: #8a1f1f; padding: 12px 14px; border-radius: 14px; margin: 0 24px 14px; font-weight: 600; font-size: 14px; }
-  @media (prefers-color-scheme: dark) { .error { background: #4A1E1D; color: #FFC9C7; } }
+  .error { background: var(--error-bg); color: var(--error-text); padding: 12px 14px; border-radius: 14px; margin: 0 24px 14px; font-weight: 600; font-size: 14px; }
+
+  /* Avatar-bouton dans l'en-tete : c'est l'entree vers les reglages. Une
+     quatrieme case dans la barre d'onglets alourdirait une interface faite
+     pour un enfant. */
+  .avatar-link {
+    margin-left: auto; flex-shrink: 0;
+    width: 46px; height: 46px; border-radius: 50%;
+    background: var(--accent-soft);
+    border: 2px solid var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; line-height: 1; text-decoration: none;
+  }
+
+  .settings-group { margin-bottom: 22px; }
+  .settings-label { font-size: 13px; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 10px; }
+  .choices { display: flex; flex-wrap: wrap; gap: 10px; }
+  .choice input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .choice {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    min-height: 48px; min-width: 48px; padding: 10px 16px;
+    background: var(--surface); border: 2px solid var(--border); border-radius: 16px;
+    font-size: 15px; font-weight: 700; cursor: pointer;
+  }
+  /* L'etat selectionne suit la case reellement cochee, pas une classe rendue
+     par le serveur : sans ca, cliquer un autre choix ne changerait rien tant
+     que l'enfant n'a pas enregistre. */
+  .choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .choice input:focus-visible + span { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap;
+  }
+  .choice-emoji { font-size: 26px; line-height: 1; }
+  .swatch { width: 26px; height: 26px; border-radius: 50%; display: block; }
+  .save-bar { padding: 4px 24px 8px; }
+  .save-bar button {
+    width: 100%; min-height: 52px;
+    background: var(--accent); color: #fff;
+    border: none; border-radius: 18px;
+    font: inherit; font-size: 16px; font-weight: 800; cursor: pointer;
+  }
+  .pin-form { display: flex; flex-direction: column; gap: 14px; align-items: center; padding-top: 12px; }
+  .pin-form input {
+    font: inherit; font-family: 'Baloo 2', system-ui, sans-serif;
+    font-size: 34px; font-weight: 800; letter-spacing: .35em; text-align: center;
+    width: 100%; max-width: 260px; min-height: 68px;
+    padding: 10px 14px 10px 24px;
+    background: var(--surface); color: var(--text);
+    border: 2px solid var(--border); border-radius: 20px;
+  }
+  .pin-form input:focus { outline: none; border-color: var(--accent); }
+  .pin-form button {
+    width: 100%; max-width: 260px; min-height: 56px;
+    background: var(--accent); color: #fff;
+    border: none; border-radius: 18px;
+    font: inherit; font-size: 17px; font-weight: 800; cursor: pointer;
+  }
+  .back-link { display: inline-block; margin: 0 24px 14px; font-weight: 700; color: var(--accent); text-decoration: none; font-size: 14px; }
 
   .tabs {
     position: sticky; bottom: 0;
@@ -196,9 +271,15 @@ function renderTabs(child: ChildConfig, active: ChildSectionId): string {
   }).join("");
 }
 
-export function renderChildShell(options: {
+export interface ChildContext {
   child: ChildConfig;
-  active: ChildSectionId;
+  prefs: ChildPreferences;
+  accent: AccentPreset;
+}
+
+export function renderChildShell(options: {
+  context: ChildContext;
+  active: ChildSectionId | null;
   title: string;
   subtitle: string;
   headIcon: string;
@@ -206,21 +287,17 @@ export function renderChildShell(options: {
   beforeList?: string;
   body: string;
   error?: string;
+  /** Remplace la barre d'onglets (bouton d'enregistrement des reglages). */
+  footer?: string;
 }): string {
-  const { child } = options;
-  // Les deux variantes de couleur sont exposees ici ; c'est la feuille de
-  // styles qui choisit selon le theme (un style inline gagnerait sur la
-  // media query et figerait la version claire).
-  const colors =
-    `--accent-light:${safeColor(child.accent.light)};--accent-dark:${safeColor(child.accent.dark)};` +
-    `--accent-soft-light:${safeColor(child.accentSoft.light)};--accent-soft-dark:${safeColor(child.accentSoft.dark)}`;
+  const { child, prefs, accent } = options.context;
 
   return `<!DOCTYPE html>
-<html lang="fr" style="${colors}">
+<html lang="fr"${themeAttribute(prefs.theme)} style="${accentVars(accent)}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="${safeColor(child.accent.light)}" />
+  <meta name="theme-color" content="${accent.light}" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="preload" as="font" type="font/woff2" href="${FONTS.nunito}" crossorigin />
   <title>${escapeHtml(options.title)}</title>
@@ -232,13 +309,18 @@ export function renderChildShell(options: {
       <div class="head-row">
         ${options.headIcon}
         <h1>${escapeHtml(options.title)}</h1>
+        ${
+          options.active === null
+            ? ""
+            : `<a class="avatar-link" href="/enfant/${escapeHtml(child.slug)}/reglages" aria-label="Mes reglages">${escapeHtml(prefs.avatar)}</a>`
+        }
       </div>
       <p>${escapeHtml(options.subtitle)}</p>
     </div>
     ${options.error ? `<div class="error">${escapeHtml(options.error)}</div>` : ""}
     ${options.beforeList ?? ""}
     <div class="list">${options.body}</div>
-    <nav class="tabs">${renderTabs(child, options.active)}</nav>
+    ${options.footer ?? (options.active === null ? "" : `<nav class="tabs">${renderTabs(child, options.active)}</nav>`)}
   </div>
   <script>${TOGGLE_SCRIPT}</script>
 </body>
