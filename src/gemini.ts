@@ -63,6 +63,19 @@ async function describeFailure(response: Response): Promise<string> {
   }
 }
 
+/**
+ * Lit la cle, en retirant les espaces et retours a la ligne.
+ *
+ * Une cle collee depuis un navigateur embarque souvent un retour a la ligne
+ * invisible, et Google repond alors "API key not valid" - un message qui
+ * accuse la cle elle-meme et envoie chercher au mauvais endroit.
+ */
+function readApiKey(env: Env): string {
+  const key = typeof env.GEMINI_API_KEY === "string" ? env.GEMINI_API_KEY.trim() : "";
+  if (key.length === 0) throw new Error("GEMINI_API_KEY n'est pas configure sur le Worker.");
+  return key;
+}
+
 function buildPrompt(child: ChildConfig, note: TutorNote): string {
   return [
     `Tu prepares un exercice court pour ${child.displayName}, en classe de ${child.schoolYear}.`,
@@ -96,10 +109,7 @@ function buildPrompt(child: ChildConfig, note: TutorNote): string {
  * et le parent doit le voir tel quel.
  */
 export async function generateExercise(env: Env, child: ChildConfig, note: TutorNote): Promise<string> {
-  const apiKey = env.GEMINI_API_KEY;
-  if (typeof apiKey !== "string" || apiKey.length === 0) {
-    throw new Error("GEMINI_API_KEY n'est pas configure sur le Worker.");
-  }
+  const apiKey = readApiKey(env);
 
   const response = await fetch(ENDPOINT, {
     method: "POST",
@@ -163,10 +173,7 @@ export async function generateExamExercise(
   choice: ExamChoice,
   examLabel: string
 ): Promise<{ exercise: string; correction: string }> {
-  const apiKey = env.GEMINI_API_KEY;
-  if (typeof apiKey !== "string" || apiKey.length === 0) {
-    throw new Error("GEMINI_API_KEY n'est pas configure sur le Worker.");
-  }
+  const apiKey = readApiKey(env);
 
   const prompt = [
     `Tu prepares ${child.displayName}, en classe de ${child.schoolYear}, a l'examen : ${examLabel}.`,
