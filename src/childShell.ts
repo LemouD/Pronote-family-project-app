@@ -2,6 +2,8 @@ import type { ChildConfig } from "./children";
 import { fontFace, FONTS } from "./fonts";
 import { escapeHtml } from "./html";
 import { accentVars, type AccentPreset, type ChildPreferences, themeAttribute } from "./preferences";
+import { ROUTINE_LABEL } from "./routine";
+import { SIGNAL_BANNER, SIGNAL_SCRIPT, SIGNAL_STYLE } from "./signal";
 
 /**
  * Coquille de l'espace enfant : fond creme, coins ronds, gros reperes
@@ -9,11 +11,15 @@ import { accentVars, type AccentPreset, type ChildPreferences, themeAttribute } 
  * cocher - l'oppose de l'espace parent (parentShell.ts).
  */
 
-export type ChildSectionId = "devoirs" | "devoir-maison" | "prieres" | "brevet";
+export type ChildSectionId = "devoirs" | "devoir-maison" | "prieres" | "mon-temps" | "brevet" | "reglages";
 
 const ICON = `viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"`;
 
-const TABS: { id: ChildSectionId; label: string; path: string; icon: string }[] = [
+/**
+ * Entrees du menu. "restricted" marque celles reservees a un enfant : elles
+ * n'apparaissent que dans son propre menu.
+ */
+const MENU: { id: ChildSectionId; label: string; path: string; icon: string; restricted?: boolean }[] = [
   {
     id: "devoirs",
     label: "Aujourd'hui",
@@ -33,10 +39,23 @@ const TABS: { id: ChildSectionId; label: string; path: string; icon: string }[] 
     icon: `<svg ${ICON}><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>`
   },
   {
+    id: "mon-temps",
+    label: ROUTINE_LABEL,
+    path: "/mon-temps",
+    icon: `<svg ${ICON}><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5"/><path d="M9 2h6"/></svg>`
+  },
+  {
     id: "brevet",
     label: "Brevet",
     path: "/brevet",
-    icon: `<svg ${ICON}><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>`
+    icon: `<svg ${ICON}><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>`,
+    restricted: true
+  },
+  {
+    id: "reglages",
+    label: "Mes reglages",
+    path: "/reglages",
+    icon: `<svg ${ICON}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`
   }
 ];
 
@@ -50,6 +69,11 @@ const CHILD_LIGHT_TOKENS = `
     --accent-soft: var(--accent-soft-light);
     --error-bg: #FDE2E1;
     --error-text: #8A1F1F;
+    /* Une couleur par type de bloc de "Mon temps". Revisions prend la couleur
+       de l'enfant : c'est la partie qui lui appartient vraiment. */
+    --kind-revisions: var(--accent);
+    --kind-pause: #3F8FA8;
+    --kind-loisir: #C9752A;
 `;
 
 const CHILD_DARK_TOKENS = `
@@ -62,6 +86,9 @@ const CHILD_DARK_TOKENS = `
     --accent-soft: var(--accent-soft-dark);
     --error-bg: #4A1E1D;
     --error-text: #FFC9C7;
+    --kind-revisions: var(--accent);
+    --kind-pause: #7FC4DC;
+    --kind-loisir: #F0A868;
 `;
 
 const CHILD_STYLE = `
@@ -229,6 +256,8 @@ const CHILD_STYLE = `
     background: transparent !important; color: var(--accent) !important;
     border: 2px solid var(--accent) !important;
   }
+  /* Une action destructive se signale avant le clic, pas apres. */
+  .exam-danger { color: var(--error-text) !important; border-color: var(--error-text) !important; }
   .exam-done { font-size: 11px; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .02em; }
 
   .pin-form { display: flex; flex-direction: column; gap: 14px; align-items: center; padding-top: 12px; }
@@ -247,25 +276,116 @@ const CHILD_STYLE = `
     border: none; border-radius: 18px;
     font: inherit; font-size: 17px; font-weight: 800; cursor: pointer;
   }
-  .back-link { display: inline-block; margin: 0 24px 14px; font-weight: 700; color: var(--accent); text-decoration: none; font-size: 14px; }
 
-  .tabs {
-    position: sticky; bottom: 0;
-    display: flex; gap: 8px;
-    padding: 12px 20px calc(22px + env(safe-area-inset-bottom));
+  /* Menu en tiroir. Bati sur <details> : il s'ouvre et se ferme sans une
+     ligne de JavaScript, donc rien a ajouter a la CSP, et il fonctionne meme
+     si un script echoue. Une barre d'onglets ne tenait plus a sept entrees. */
+  .menu {
+    position: sticky; top: 0; z-index: 20;
     background: var(--bg);
+    border-bottom: 2px solid var(--border);
   }
-  .tabs a {
-    flex: 1;
-    display: flex; flex-direction: column; align-items: center; gap: 4px;
-    padding: 8px; border-radius: 16px;
-    text-decoration: none;
-    color: var(--text-secondary);
+  .menu-button {
+    list-style: none; cursor: pointer;
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 24px;
+    font-family: 'Baloo 2', system-ui, sans-serif;
+    font-weight: 800; font-size: 17px;
   }
-  .tabs a svg { width: 20px; height: 20px; }
-  .tabs a span { font-size: 11px; font-weight: 800; text-align: center; line-height: 1.15; }
-  .tabs a { padding: 8px 4px; }
-  .tabs a.active { background: var(--accent-soft); color: var(--accent); }
+  .menu-button::-webkit-details-marker { display: none; }
+  .menu-button svg { width: 24px; height: 24px; color: var(--accent); flex-shrink: 0; }
+  .menu-button .chevron { margin-left: auto; width: 18px; height: 18px; color: var(--text-secondary); }
+  .menu[open] .chevron { transform: rotate(180deg); }
+  .menu-panel { display: flex; flex-direction: column; gap: 4px; padding: 0 16px 14px; }
+  .menu-panel a {
+    display: flex; align-items: center; gap: 14px;
+    min-height: 52px; padding: 10px 16px;
+    border-radius: 16px; text-decoration: none;
+    color: var(--text); font-size: 16px; font-weight: 700;
+  }
+  .menu-panel a svg { width: 22px; height: 22px; flex-shrink: 0; color: var(--text-secondary); }
+  .menu-panel a.active { background: var(--accent-soft); color: var(--accent); }
+  .menu-panel a.active svg { color: var(--accent); }
+
+  /* --- Mon temps --- */
+
+  .meters { display: flex; flex-direction: column; gap: 12px; margin: 0 24px 6px; }
+  .meter-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 13.5px; font-weight: 800; }
+  .meter-row .muted { color: var(--text-secondary); font-weight: 700; }
+  .gauge { height: 10px; border-radius: 999px; background: var(--border); overflow: hidden; margin-top: 6px; }
+  .gauge div { height: 100%; background: var(--kind-loisir); border-radius: 999px; }
+  .gauge.full div { background: var(--error-text); }
+
+  .block {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface); border: 2px solid var(--border);
+    border-left: 6px solid var(--kind); border-radius: 18px;
+    padding: 12px 14px;
+  }
+  .block-body { flex: 1; min-width: 0; }
+  .block-kind { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--kind); }
+  .block-label { font-size: 16px; font-weight: 800; overflow-wrap: anywhere; }
+  .block-time { font-size: 15px; font-weight: 800; color: var(--text-secondary); white-space: nowrap; }
+  .block.done { opacity: .55; }
+  .block.current { border-color: var(--kind); }
+  .block-tools { display: flex; gap: 6px; }
+  .block-tools button {
+    font: inherit; width: 36px; height: 36px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; color: var(--text-secondary);
+    border: 2px solid var(--border); border-radius: 12px; cursor: pointer;
+  }
+  .block-tools button svg { width: 16px; height: 16px; }
+  .block-tools button:disabled { opacity: .35; cursor: default; }
+
+  .add-block { background: var(--surface); border: 2px solid var(--border); border-radius: 20px; padding: 16px; }
+  .kind-choice { display: flex; gap: 8px; margin-bottom: 12px; }
+  .kind-choice label {
+    flex: 1; position: relative; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 46px; padding: 8px 4px;
+    border: 2px solid var(--border); border-radius: 14px;
+    font-size: 14px; font-weight: 800; color: var(--text-secondary);
+    text-align: center;
+  }
+  .kind-choice input { position: absolute; opacity: 0; pointer-events: none; }
+  /* Selection sans JavaScript : la bordure suit la case reellement cochee. */
+  .kind-choice label:has(input:checked) { border-color: var(--kind); color: var(--kind); background: var(--surface); }
+  .kind-choice label:has(input:disabled) { opacity: .4; cursor: default; }
+  .add-block input[type="text"], .add-block select {
+    font: inherit; font-size: 16px; font-weight: 700;
+    width: 100%; min-height: 48px; padding: 10px 12px; margin-bottom: 10px;
+    background: var(--bg); color: var(--text);
+    border: 2px solid var(--border); border-radius: 14px;
+  }
+  .add-block button, .routine-actions button {
+    font: inherit; font-size: 16px; font-weight: 800;
+    width: 100%; min-height: 52px;
+    background: var(--accent); color: #fff;
+    border: none; border-radius: 16px; cursor: pointer;
+  }
+  .add-block button:disabled { opacity: .5; cursor: default; }
+  .routine-actions { display: flex; flex-direction: column; gap: 10px; }
+  .routine-ghost {
+    background: transparent !important; color: var(--text-secondary) !important;
+    border: 2px solid var(--border) !important;
+  }
+
+  .timer {
+    background: var(--surface); border: 3px solid var(--kind);
+    border-radius: 26px; padding: 24px; text-align: center;
+  }
+  .timer-kind { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--kind); }
+  .timer-label { font-family: 'Baloo 2', system-ui, sans-serif; font-size: 24px; font-weight: 800; margin: 4px 0 10px; overflow-wrap: anywhere; }
+  .timer-count { font-family: 'Baloo 2', system-ui, sans-serif; font-size: 62px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; color: var(--kind); }
+  .timer-count.over { color: var(--error-text); }
+  .timer-next { font-size: 14px; font-weight: 700; color: var(--text-secondary); margin-top: 14px; }
+  .timer-done-note { font-size: 15px; font-weight: 800; color: var(--kind-loisir); margin-top: 14px; }
+
+  .routine-end { text-align: center; padding: 10px 0 4px; }
+  .routine-end .big { font-family: 'Baloo 2', system-ui, sans-serif; font-size: 30px; font-weight: 800; margin-bottom: 6px; }
+
+${SIGNAL_STYLE}
 `;
 
 /**
@@ -313,11 +433,31 @@ export function renderCheck(options: { id: string; toggleUrl: string; done: bool
   `;
 }
 
-function renderTabs(child: ChildConfig, active: ChildSectionId): string {
-  return TABS.filter((tab) => tab.id !== "brevet" || child.examPrep).map((tab) => {
-    const isActive = tab.id === active;
-    return `<a href="/enfant/${escapeHtml(child.slug)}${tab.path}"${isActive ? ' class="active" aria-current="page"' : ""}>${tab.icon}<span>${escapeHtml(tab.label)}</span></a>`;
-  }).join("");
+const BURGER = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>`;
+const CHEVRON = `<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+function visibleMenu(child: ChildConfig) {
+  // Une entree reservee n'apparait que chez l'enfant concerne : Codou ne doit
+  // pas voir le brevet, ni meme savoir qu'il existe.
+  return MENU.filter((entry) => !entry.restricted || child.examPrep);
+}
+
+function renderMenu(child: ChildConfig, active: ChildSectionId | null): string {
+  const current = visibleMenu(child).find((entry) => entry.id === active);
+
+  const links = visibleMenu(child)
+    .map((entry) => {
+      const isActive = entry.id === active;
+      return `<a href="/enfant/${escapeHtml(child.slug)}${entry.path}"${isActive ? ' class="active" aria-current="page"' : ""}>${entry.icon}<span>${escapeHtml(entry.label)}</span></a>`;
+    })
+    .join("");
+
+  return `
+    <details class="menu">
+      <summary class="menu-button">${BURGER}<span>${escapeHtml(current?.label ?? "Menu")}</span>${CHEVRON}</summary>
+      <nav class="menu-panel">${links}</nav>
+    </details>
+  `;
 }
 
 export interface ChildContext {
@@ -338,6 +478,8 @@ export function renderChildShell(options: {
   error?: string;
   /** Remplace la barre d'onglets (bouton d'enregistrement des reglages). */
   footer?: string;
+  /** Script propre a la page, joue apres celui du signal. */
+  script?: string;
 }): string {
   const { child, prefs, accent } = options.context;
 
@@ -354,12 +496,13 @@ export function renderChildShell(options: {
 </head>
 <body>
   <div class="page">
+    ${options.active === null ? "" : renderMenu(child, options.active)}
     <div class="head">
       <div class="head-row">
         ${options.headIcon}
         <h1>${escapeHtml(options.title)}</h1>
         ${
-          options.active === null
+          options.active === null || options.active === "reglages"
             ? ""
             : `<a class="avatar-link" href="/enfant/${escapeHtml(child.slug)}/reglages" aria-label="Mes reglages">${escapeHtml(prefs.avatar)}</a>`
         }
@@ -369,9 +512,12 @@ export function renderChildShell(options: {
     ${options.error ? `<div class="error">${escapeHtml(options.error)}</div>` : ""}
     ${options.beforeList ?? ""}
     <div class="list">${options.body}</div>
-    ${options.footer ?? (options.active === null ? "" : `<nav class="tabs">${renderTabs(child, options.active)}</nav>`)}
+    ${options.footer ?? ""}
   </div>
+  ${SIGNAL_BANNER}
   <script>${TOGGLE_SCRIPT}</script>
+  <script>${SIGNAL_SCRIPT}</script>
+  ${options.script ? `<script>${options.script}</script>` : ""}
 </body>
 </html>`;
 }

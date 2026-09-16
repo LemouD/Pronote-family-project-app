@@ -303,3 +303,23 @@ export async function markExamSeen(env: Env, child: ChildConfig): Promise<void> 
   if (!child.examPrep) return;
   await env.PRONOTE_CACHE.put(seenKey(child), JSON.stringify(new Date().toISOString()));
 }
+
+/**
+ * Supprime un exercice de la liste de l'enfant.
+ *
+ * Refuse tant qu'il n'est pas marque termine. Le bouton n'apparait que sur
+ * les exercices finis, mais la regle est verifiee ici aussi : un travail en
+ * cours ne doit pas pouvoir disparaitre, meme sur une requete forgee.
+ */
+export async function removeSession(env: Env, child: ChildConfig, sessionId: string): Promise<boolean> {
+  const sessions = await listSessions(env, child);
+  const target = sessions.find((session) => session.id === sessionId);
+  if (!target || !target.done) return false;
+
+  await writeSessions(
+    env,
+    child,
+    sessions.filter((session) => session.id !== sessionId)
+  );
+  return true;
+}

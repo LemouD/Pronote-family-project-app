@@ -6,6 +6,7 @@ import type { RecentGrade } from "./grades";
 import type { AppliedExercise, Proposal, TutorNote } from "./homeTutoring";
 import { dayLabel, escapeHtml, formatSessionDate, relativeTime } from "./html";
 import type { ParentDisplayItem } from "./parentView";
+import { ROUTINE_LABEL, type RoutineView } from "./routine";
 import { prayersFor } from "./prayers";
 import { type AccentPreset, DEFAULT_PARENT_PREFERENCES, type ParentPreferences, THEME_LABELS, THEMES } from "./preferences";
 import type { ExternalSyncStatus } from "./pronote";
@@ -28,6 +29,8 @@ export interface ParentChildData {
   tutoringPending: number;
   /** Dernieres notes importees, les plus recentes d'abord. */
   recentGrades: RecentGrade[];
+  /** Routine du jour composee par l'enfant. Lecture seule ici. */
+  routine: RoutineView;
 }
 
 /** Au-dela de ce delai sans import reussi, la synchro externe est signalee comme en retard. */
@@ -170,6 +173,45 @@ export function renderOverview(data: ParentChildData[]): string {
     )
     .join("");
 
+  // Lecture seule, volontairement : l'enfant reste seul organisateur de son
+  // temps, le parent regarde sans pouvoir corriger.
+  const routineRows = data
+    .filter((entry) => entry.routine.blocks.length > 0)
+    .map((entry) => {
+      const state = entry.routine.finished
+        ? "Termine"
+        : entry.routine.started
+          ? "En cours"
+          : "Pas encore demarre";
+
+      const blocks = entry.routine.blocks
+        .map(
+          (block) => `
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px">
+              <span style="min-width:0;overflow-wrap:anywhere">
+                <b style="font-weight:${block.status === "current" ? 700 : 600}">${escapeHtml(block.label)}</b>
+                <span class="muted"> · ${escapeHtml(block.kindLabel)}</span>
+              </span>
+              <span class="muted" style="white-space:nowrap">${block.minutes} min${
+                block.status === "current" ? " ◂" : block.status === "done" ? " ✓" : ""
+              }</span>
+            </div>
+          `
+        )
+        .join("");
+
+      return `
+        <div>
+          <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:8px">
+            <span style="font-weight:700;font-size:13px">${escapeHtml(entry.child.displayName)}</span>
+            <span class="muted" style="font-size:12px">${escapeHtml(state)}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">${blocks}</div>
+        </div>
+      `;
+    })
+    .join("");
+
   const recentRows = data
     .flatMap((entry) => entry.recentGrades.map((grade) => ({ entry, grade })))
     .sort((a, b) => b.grade.date.localeCompare(a.grade.date))
@@ -207,6 +249,14 @@ export function renderOverview(data: ParentChildData[]): string {
             ? `<div style="display:flex;flex-direction:column;gap:10px">${pendingRows}</div>
                <a class="muted" href="/parent/devoir-maison">Ouvrir</a>`
             : `<p class="empty">Rien a valider pour le moment.</p>`
+        }
+      </section>
+      <section class="card">
+        <div class="card-title">${escapeHtml(ROUTINE_LABEL)}</div>
+        ${
+          routineRows
+            ? `<div style="display:flex;flex-direction:column;gap:14px">${routineRows}</div>`
+            : `<p class="empty">Aucun des enfants n'a organise sa soiree aujourd'hui.</p>`
         }
       </section>
       <section class="card">
@@ -531,6 +581,7 @@ export function renderDevoirMaison(views: TutoringView[], options: { error?: str
               <input type="hidden" name="proposalId" value="${escapeHtml(proposal.id)}" />
               <textarea name="exercise" class="dm-exercise" maxlength="2000">${escapeHtml(proposal.exercise)}</textarea>
               <div class="dm-actions">
+                <button type="submit" formaction="/parent/devoir-maison/supprimer" class="ghost-button danger">Supprimer</button>
                 <button type="submit" formaction="/parent/devoir-maison/regenerer" class="ghost-button"${
                   options.aiConfigured ? "" : " disabled"
                 }>Regenerer</button>
@@ -550,7 +601,14 @@ export function renderDevoirMaison(views: TutoringView[], options: { error?: str
           <div style="font-size:13px;overflow-wrap:anywhere"><b>${escapeHtml(view.child.displayName)}</b> · ${escapeHtml(
             item.subject
           )} — ${escapeHtml(item.exercise.split("\n")[0].slice(0, 120))}</div>
-          <span class="badge ${item.done ? "badge-done" : "badge-todo"}">${item.done ? "Fait" : "A faire"}</span>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span class="badge ${item.done ? "badge-done" : "badge-todo"}">${item.done ? "Fait" : "A faire"}</span>
+            <form method="post" action="/parent/devoir-maison/retirer">
+              <input type="hidden" name="childSlug" value="${escapeHtml(view.child.slug)}" />
+              <input type="hidden" name="appliedId" value="${escapeHtml(item.id)}" />
+              <button type="submit" class="ghost-button danger">Retirer</button>
+            </form>
+          </div>
         </div>
       `
     )
