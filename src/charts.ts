@@ -76,6 +76,17 @@ export function renderLineChart(series: Series[], options: { title: string }): s
     return `<p class="empty">Pas encore assez de notes pour tracer une courbe.</p>`;
   }
 
+  // Une evolution a besoin d'au moins deux points. Avec un seul, le trace est
+  // un grand cadre vide avec une pastille au milieu, et une echelle inventee
+  // autour d'une unique valeur : la forme promet une tendance qui n'existe
+  // pas encore. On dit ce qu'on a, et la courbe apparaitra d'elle-meme.
+  if (withPoints.every((entry) => entry.points.length < 2)) {
+    const seules = withPoints
+      .map((entry) => `${escapeHtml(entry.label)} : ${round(entry.points[0].value)} sur 20`)
+      .join(" · ");
+    return `<p class="empty">${seules}. Une seule note pour l'instant : la courbe apparaitra a partir de la deuxieme.</p>`;
+  }
+
   const times = withPoints.flatMap((entry) => entry.points.map((point) => Date.parse(point.date)));
   const minTime = Math.min(...times);
   const maxTime = Math.max(...times);
