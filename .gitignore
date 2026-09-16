@@ -3,3 +3,9 @@ node_modules/
 .dev.vars
 dist/
 *.log
+
+# Outil local d'exploration du repo (jamais commite/pousse, usage perso)
+graphify-out/
+
+# Recap de session pour usage perso, jamais commite/pousse
+SESSION_SUMMARY.md

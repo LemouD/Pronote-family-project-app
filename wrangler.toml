@@ -7,6 +7,13 @@ compatibility_flags = ["nodejs_compat"]
 binding = "PRONOTE_CACHE"
 id = "7d399b42418b49bc8163fbca3e9d5496"
 
+# Icones et police de l'application parent, importees comme modules binaires
+# depuis src/assets/ (voir src/pwa.ts).
+[[rules]]
+type = "Data"
+globs = ["**/*.png", "**/*.woff2"]
+fallthrough = true
+
 # Secrets a ajouter par enfant (jamais dans ce fichier ni dans une conversation) :
 #   npx wrangler secret put PRONOTE_MALICK_URL
 #   npx wrangler secret put PRONOTE_MALICK_USERNAME

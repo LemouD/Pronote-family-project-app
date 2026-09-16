@@ -1,8 +1,14 @@
 """
-Synchronise les devoirs Pronote pour les enfants dont l'etablissement impose
-l'ENT (externallySynced=true dans src/children.ts). Lance periodiquement par
-GitHub Actions (voir .github/workflows/sync-homework.yml) - ne tourne jamais
-sur le Worker lui-meme (pronotepy ne fonctionne pas sur Cloudflare Workers).
+Synchronise les devoirs ET les notes Pronote pour les enfants dont
+l'etablissement impose l'ENT (externallySynced=true dans src/children.ts).
+Lance periodiquement par GitHub Actions (voir
+.github/workflows/sync-homework.yml) - ne tourne jamais sur le Worker lui-meme
+(pronotepy ne fonctionne pas sur Cloudflare Workers).
+
+Devoirs et notes sont volontairement traites dans le meme script, donc dans la
+MEME connexion : les identifiants pronotepy tournent a chaque login (voir plus
+bas), donc deux scripts qui se connecteraient chacun de leur cote se
+perimeraient mutuellement les identifiants.
 
 Lecture seule cote Pronote : n'ecrit jamais de statut "fait" vers Pronote
 (de toute facon injoignable en direct pour ces comptes). Le statut "fait"
@@ -80,6 +86,55 @@ def update_github_secret(name: str, value: str) -> None:
     )
 
 
+def to_float(value: object) -> float | None:
+    """Pronote renvoie ses nombres en texte, parfois avec une virgule."""
+    if value is None:
+        return None
+    try:
+        return float(str(value).replace(",", "."))
+    except ValueError:
+        return None
+
+
+def collect_grades(client: "pronotepy.Client") -> list[dict]:
+    """
+    Notes de toutes les periodes, a plat. Les periodes de Pronote se
+    chevauchent ("Trimestre 1" et "Annee continue" contiennent les memes
+    notes), d'ou la deduplication par identifiant : sans elle, une note
+    compterait deux fois dans la moyenne.
+
+    Les notes non chiffrees (absent, dispense, non note) sont ecartees : elles
+    n'entrent pas dans une moyenne et casseraient les graphiques.
+    """
+    by_id: dict[str, dict] = {}
+
+    for period in client.periods:
+        try:
+            period_grades = period.grades
+        except Exception as error:  # noqa: BLE001 - une periode illisible ne doit pas tout arreter
+            print(f"  periode {period.name} ignoree : {type(error).__name__}", file=sys.stderr)
+            continue
+
+        for grade in period_grades:
+            value = to_float(grade.grade)
+            out_of = to_float(grade.out_of)
+            if value is None or not out_of:
+                continue
+
+            by_id[grade.id] = {
+                "id": grade.id,
+                "subject": grade.subject.name,
+                "date": grade.date.isoformat(),
+                "value": value,
+                "outOf": out_of,
+                "coefficient": to_float(grade.coefficient) or 1.0,
+                "classAverage": to_float(grade.average),
+                "period": period.name,
+            }
+
+    return sorted(by_id.values(), key=lambda item: item["date"])
+
+
 def sync_child(child: dict) -> None:
     prefix = child["prefix"]
     slug = child["slug"]
@@ -122,6 +177,17 @@ def sync_child(child: dict) -> None:
 
     put_kv(f"homework-external:{slug}", items)
     print(f"[{prefix}] {len(items)} devoir(s) synchronise(s).")
+
+    grades = collect_grades(client)
+    put_kv(f"grades-external:{slug}", grades)
+    print(f"[{prefix}] {len(grades)} note(s) synchronisee(s).")
+
+    # Sans cet horodatage, l'espace parent ne saurait pas distinguer "aucun
+    # devoir aujourd'hui" de "la synchro est en panne depuis trois jours".
+    put_kv(
+        f"homework-synced-at:{slug}",
+        datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    )
 
     # Les identifiants tournent a chaque connexion : on remet a jour les
     # secrets GitHub systematiquement, pour que la prochaine synchro

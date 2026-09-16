@@ -31,6 +31,11 @@ function externalHomeworkKey(child: ChildConfig): string {
   return `homework-external:${child.slug}`;
 }
 
+/** Horodatage du dernier import reussi, ecrit par bootstrap/sync_homework.py. */
+function externalSyncedAtKey(child: ChildConfig): string {
+  return `homework-synced-at:${child.slug}`;
+}
+
 /**
  * Statut "fait" gere cote KV pour les enfants en ENT (externallySynced) :
  * Pronote n'est pas joignable en direct pour eux, donc pas de re-ecriture
@@ -169,6 +174,33 @@ async function getHomeworkExternallySynced(env: Env, child: ChildConfig): Promis
 export async function getHomework(env: Env, child: ChildConfig, options?: { skipCache?: boolean }): Promise<HomeworkItem[]> {
   if (child.externallySynced) return getHomeworkExternallySynced(env, child);
   return getHomeworkDirect(env, child, options);
+}
+
+export interface ExternalSyncStatus {
+  externallySynced: boolean;
+  hasImportedData: boolean;
+  /** ISO du dernier import reussi, null si jamais synchronise. */
+  syncedAt: string | null;
+}
+
+/**
+ * Sante de la synchronisation externe, affichee dans l'espace parent. Sans
+ * horodatage, "aucun devoir" serait ambigu : journee sans devoirs, ou script
+ * de synchro en panne depuis trois jours ?
+ */
+export async function getExternalSyncStatus(env: Env, child: ChildConfig): Promise<ExternalSyncStatus> {
+  if (!child.externallySynced) {
+    return { externallySynced: false, hasImportedData: true, syncedAt: null };
+  }
+
+  // sync_homework.py ecrit toutes ses valeurs en JSON, y compris cet
+  // horodatage : il faut donc le relire en JSON et pas en texte brut.
+  const [imported, syncedAt] = await Promise.all([
+    env.PRONOTE_CACHE.get(externalHomeworkKey(child)),
+    env.PRONOTE_CACHE.get(externalSyncedAtKey(child), "json") as Promise<string | null>
+  ]);
+
+  return { externallySynced: true, hasImportedData: imported !== null, syncedAt };
 }
 
 /**
