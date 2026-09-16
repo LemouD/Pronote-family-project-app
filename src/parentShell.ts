@@ -337,6 +337,35 @@ const PARENT_STYLE = `
   .ghost-button:disabled, .save-button:disabled { opacity: .5; cursor: default; }
   /* Une action destructive se signale avant le clic, pas apres. */
   .ghost-button.danger { color: var(--danger); border-color: var(--danger); }
+  /* --- Configuration de la section Actu --- */
+  .actu-form { display: flex; flex-direction: column; gap: 12px; }
+  .actu-options { display: flex; flex-direction: column; gap: 8px; }
+  .actu-option {
+    display: flex; gap: 10px; align-items: flex-start; cursor: pointer;
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--surface-alt);
+  }
+  .actu-option input { margin-top: 3px; flex-shrink: 0; }
+  .actu-option span { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+  .actu-option .muted { font-size: 12px; line-height: 1.45; }
+  .actu-option.missing { opacity: .75; }
+  .actu-missing { font-size: 11.5px; font-weight: 700; color: var(--danger); }
+  .actu-field { display: flex; flex-direction: column; gap: 6px; }
+  .genre-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+  .genre-chip {
+    display: flex; align-items: center; gap: 6px; cursor: pointer;
+    font-size: 12.5px; font-weight: 600;
+    padding: 6px 10px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface);
+  }
+  /* L'etat coche se lit sans avoir a viser la case elle-meme. */
+  .genre-chip:has(input:checked) { border-color: var(--accent); color: var(--accent); }
+  .actu-field select {
+    font: inherit; font-size: 14px;
+    min-height: 40px; padding: 8px 12px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface); color: var(--text);
+  }
   .dm-applied {
     background: var(--surface-alt); border: 1px solid var(--border); border-radius: 10px;
     padding: 14px 18px; margin-bottom: 10px;
