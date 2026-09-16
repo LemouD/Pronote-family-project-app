@@ -3,7 +3,20 @@ import { addCustomTask, isCustomTaskId, listCustomTasks, setCustomTaskStatus, va
 import { mergeForDisplay } from "./displayItems";
 import type { Env } from "./env";
 import { checkAccess, childPinScope, hasPin, isValidPinFormat, type PinScope, sessionCookie, setPin, tutorPinScope, verifyPin } from "./pinAuth";
-import { generateExercise } from "./gemini";
+import { generateExamExercise, generateExercise } from "./gemini";
+import {
+  addSession,
+  catalogueFor,
+  completeSession,
+  consumeQuota,
+  getQuota,
+  listSessions,
+  markExamSeen,
+  newlyCompleted,
+  revealCorrection,
+  toView,
+  validateChoice
+} from "./examPrep";
 import {
   addNote,
   applyProposal,
@@ -63,6 +76,7 @@ import {
   renderChildPinMissing,
   renderChildPrayers,
   renderChildSettings,
+  renderChildExamPrep,
   renderChildTutoring
 } from "./render";
 
@@ -157,17 +171,18 @@ async function loadParentData(env: Env): Promise<ParentChildData[]> {
 
   return Promise.all(
     children.map(async (child) => {
-      const [{ items: homework, error }, customTasks, sync, prayers, prefs, pinConfigured, tutorPinConfigured] = await Promise.all([
+      const [{ items: homework, error }, customTasks, sync, prayers, prefs, pinConfigured, tutorPinConfigured, examCompleted] = await Promise.all([
         getHomeworkSafe(env, child),
         listCustomTasks(env, child),
         getExternalSyncStatus(env, child),
         getPrayerProgress(env, child, today),
         getChildPreferences(env, child),
         hasPin(env, childPinScope(child)),
-        hasPin(env, tutorPinScope(child))
+        hasPin(env, tutorPinScope(child)),
+        newlyCompleted(env, child)
       ]);
       const items = await annotateNewlyDone(env, child, mergeForDisplay(homework, customTasks));
-      return { child, items, error, sync, prayers, accent: findAccent(prefs.accentId), hasPin: pinConfigured, hasTutorPin: tutorPinConfigured };
+      return { child, items, error, sync, prayers, accent: findAccent(prefs.accentId), hasPin: pinConfigured, hasTutorPin: tutorPinConfigured, examCompleted };
     })
   );
 }
@@ -285,7 +300,9 @@ async function renderParentPage(page: ParentPage, env: Env, url: URL, prefs: Par
     const body = renderOverview(data);
     // La vue d'ensemble est la page d'atterrissage : c'est elle qui consomme
     // les badges "nouveau", pas les autres sections qui affichent les memes devoirs.
-    await Promise.all(data.map((entry) => markSeen(env, entry.child, entry.items)));
+    await Promise.all(
+      data.flatMap((entry) => [markSeen(env, entry.child, entry.items), markExamSeen(env, entry.child)])
+    );
     return html(renderParentShell({ prefs, active: "overview", title: page.title, subtitle: OVERVIEW_SUBTITLE(), body }));
   }
 
@@ -450,6 +467,71 @@ export default {
           childContext(env, child)
         ]);
         return html(renderChildHomework(context, mergeForDisplay(homework, customTasks), error), error ? 500 : 200);
+      }
+
+      // Preparation d'examen : seulement pour un enfant concerne.
+      if (sub.startsWith("/brevet")) {
+        const catalogue = catalogueFor(child);
+        if (!catalogue) return html("Page introuvable.", 404);
+
+        const today = todayInParis();
+        const showPage = async (error?: string, status = 200) => {
+          const [context, sessions, quota] = await Promise.all([
+            childContext(env, child),
+            listSessions(env, child),
+            getQuota(env, child, today)
+          ]);
+          return html(renderChildExamPrep(context, catalogue, sessions.map(toView), quota, { error }), status);
+        };
+
+        if (sub === "/brevet" && request.method === "GET") return showPage();
+
+        if (sub === "/brevet/generer" && request.method === "POST") {
+          const quota = await getQuota(env, child, today);
+          if (quota.remaining === 0) {
+            return showPage("Tu as atteint le nombre d'exercices pour aujourd'hui. Reviens demain.", 429);
+          }
+
+          // Le select encode "matiere|notion" ; les deux doivent exister dans
+          // le catalogue, sinon rien ne part vers le modele.
+          const form = await request.formData();
+          const raw = String(form.get("topic") ?? "");
+          const separator = raw.indexOf("|");
+          const choice =
+            separator === -1
+              ? null
+              : validateChoice(catalogue, {
+                  subjectId: raw.slice(0, separator),
+                  topic: raw.slice(separator + 1),
+                  formatId: form.get("formatId")
+                });
+          if (!choice) return showPage("Choix invalide, reessaie.", 400);
+
+          try {
+            const generated = await generateExamExercise(env, child, choice, catalogue.label);
+            await addSession(env, child, choice, generated);
+            await consumeQuota(env, child, today);
+          } catch (error) {
+            console.error(`generateExamExercise(${child.slug}) failed:`, error);
+            return showPage("La generation a echoue. Reessaie dans un moment.", 502);
+          }
+
+          return new Response(null, { status: 303, headers: { location: `/enfant/${child.slug}/brevet`, ...NO_STORE } });
+        }
+
+        if ((sub === "/brevet/correction" || sub === "/brevet/valider") && request.method === "POST") {
+          const form = await request.formData();
+          const sessionId = String(form.get("sessionId") ?? "");
+          const updated =
+            sub === "/brevet/correction"
+              ? await revealCorrection(env, child, sessionId)
+              : await completeSession(env, child, sessionId);
+
+          if (!updated) return showPage("Cet exercice n'existe plus.", 404);
+          return new Response(null, { status: 303, headers: { location: `/enfant/${child.slug}/brevet`, ...NO_STORE } });
+        }
+
+        return html("Page introuvable.", 404);
       }
 
       if (sub === "/devoir-maison" && request.method === "GET") {

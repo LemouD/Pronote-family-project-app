@@ -1,6 +1,7 @@
 import { renderLineChart } from "./charts";
 import type { ChildConfig } from "./children";
 import { formatGrade, type Series, type SubjectSummary } from "./grades";
+import type { ExamSession } from "./examPrep";
 import type { AppliedExercise, Proposal, TutorNote } from "./homeTutoring";
 import { dayLabel, escapeHtml, relativeTime } from "./html";
 import type { ParentDisplayItem } from "./parentView";
@@ -20,6 +21,8 @@ export interface ParentChildData {
   hasPin: boolean;
   /** Idem pour la page du prof de maison. */
   hasTutorPin: boolean;
+  /** Exercices de preparation d'examen termines depuis la derniere visite. */
+  examCompleted: ExamSession[];
 }
 
 /** Au-dela de ce delai sans import reussi, la synchro externe est signalee comme en retard. */
@@ -109,6 +112,16 @@ export function renderOverview(data: ParentChildData[]): string {
     })
     .join("");
 
+  // Notification : ce que l'enfant a termine depuis la derniere fois que le
+  // parent a ouvert cette page. Consommee par markExamSeen (voir index.ts).
+  const examDone = data
+    .filter((entry) => entry.examCompleted.length > 0)
+    .map((entry) => ({
+      level: "ok" as const,
+      title: `${entry.child.displayName} a termine ${entry.examCompleted.length} exercice(s) de revision`,
+      detail: entry.examCompleted.map((session) => `${session.subjectLabel} - ${session.topic}`).join(" | ")
+    }));
+
   const missingPin = data
     .filter((entry) => !entry.hasPin)
     .map((entry) => ({
@@ -117,7 +130,7 @@ export function renderOverview(data: ParentChildData[]): string {
       detail: "Sa page est bloquee tant que tu ne lui en donnes pas un, dans Reglages."
     }));
 
-  const alerts = [...missingPin, ...data.map((entry) => syncAlert(entry))]
+  const alerts = [...examDone, ...missingPin, ...data.map((entry) => syncAlert(entry))]
     .map(
       (alert) => `
         <div class="alert alert-${alert.level}">

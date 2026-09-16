@@ -9,7 +9,7 @@ import { accentVars, type AccentPreset, type ChildPreferences, themeAttribute } 
  * cocher - l'oppose de l'espace parent (parentShell.ts).
  */
 
-export type ChildSectionId = "devoirs" | "devoir-maison" | "prieres";
+export type ChildSectionId = "devoirs" | "devoir-maison" | "prieres" | "brevet";
 
 const ICON = `viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"`;
 
@@ -31,6 +31,12 @@ const TABS: { id: ChildSectionId; label: string; path: string; icon: string }[] 
     label: "Prieres",
     path: "/prieres",
     icon: `<svg ${ICON}><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>`
+  },
+  {
+    id: "brevet",
+    label: "Brevet",
+    path: "/brevet",
+    icon: `<svg ${ICON}><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>`
   }
 ];
 
@@ -189,6 +195,42 @@ const CHILD_STYLE = `
     border: none; border-radius: 18px;
     font: inherit; font-size: 16px; font-weight: 800; cursor: pointer;
   }
+  /* --- Preparation d'examen --- */
+  .exam-form-wrap { padding: 0 24px 4px; }
+  .exam-form {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 18px; padding: 16px 18px;
+  }
+  .exam-label { display: block; font-size: 12.5px; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 7px; }
+  .exam-form select {
+    font: inherit; font-size: 15px; font-weight: 600; width: 100%;
+    min-height: 48px; padding: 10px 12px; margin-bottom: 16px;
+    background: var(--bg); color: var(--text);
+    border: 2px solid var(--border); border-radius: 14px;
+  }
+  .exam-form button, .exam-actions button {
+    font: inherit; font-size: 16px; font-weight: 800;
+    width: 100%; min-height: 52px;
+    background: var(--accent); color: #fff;
+    border: none; border-radius: 16px; cursor: pointer;
+  }
+  .exam-form button:disabled { opacity: .5; cursor: default; }
+  .exam-quota { font-size: 12.5px; font-weight: 700; color: var(--text-secondary); text-align: center; margin: 10px 0 0; }
+
+  .exam-card {
+    background: var(--surface); border: 2px solid var(--accent);
+    border-radius: 20px; padding: 16px 18px;
+  }
+  .exam-card.done { border-color: var(--border); }
+  .exam-text { font-size: 15px; font-weight: 600; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 10px; }
+  .exam-correction { background: var(--accent-soft); border-radius: 14px; padding: 14px; font-weight: 600; }
+  .exam-actions { margin-top: 14px; }
+  .exam-ghost {
+    background: transparent !important; color: var(--accent) !important;
+    border: 2px solid var(--accent) !important;
+  }
+  .exam-done { font-size: 11px; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .02em; }
+
   .pin-form { display: flex; flex-direction: column; gap: 14px; align-items: center; padding-top: 12px; }
   .pin-form input {
     font: inherit; font-family: 'Baloo 2', system-ui, sans-serif;
@@ -221,7 +263,8 @@ const CHILD_STYLE = `
     color: var(--text-secondary);
   }
   .tabs a svg { width: 20px; height: 20px; }
-  .tabs a span { font-size: 11px; font-weight: 800; }
+  .tabs a span { font-size: 11px; font-weight: 800; text-align: center; line-height: 1.15; }
+  .tabs a { padding: 8px 4px; }
   .tabs a.active { background: var(--accent-soft); color: var(--accent); }
 `;
 
@@ -271,7 +314,7 @@ export function renderCheck(options: { id: string; toggleUrl: string; done: bool
 }
 
 function renderTabs(child: ChildConfig, active: ChildSectionId): string {
-  return TABS.map((tab) => {
+  return TABS.filter((tab) => tab.id !== "brevet" || child.examPrep).map((tab) => {
     const isActive = tab.id === active;
     return `<a href="/enfant/${escapeHtml(child.slug)}${tab.path}"${isActive ? ' class="active" aria-current="page"' : ""}>${tab.icon}<span>${escapeHtml(tab.label)}</span></a>`;
   }).join("");
