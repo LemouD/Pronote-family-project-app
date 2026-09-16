@@ -1,6 +1,7 @@
 import { renderLineChart } from "./charts";
 import type { ChildConfig } from "./children";
 import { formatGrade, type Series, type SubjectSummary } from "./grades";
+import type { AppliedExercise, Proposal, TutorNote } from "./homeTutoring";
 import { dayLabel, escapeHtml, relativeTime } from "./html";
 import type { ParentDisplayItem } from "./parentView";
 import { prayersFor } from "./prayers";
@@ -17,6 +18,8 @@ export interface ParentChildData {
   accent: AccentPreset;
   /** false = la page de cet enfant est inaccessible tant qu'aucun code n'est defini. */
   hasPin: boolean;
+  /** Idem pour la page du prof de maison. */
+  hasTutorPin: boolean;
 }
 
 /** Au-dela de ce delai sans import reussi, la synchro externe est signalee comme en retard. */
@@ -384,12 +387,123 @@ export function renderNotes(data: ChildGrades[]): string {
     .join("");
 }
 
-export function renderComingSoon(title: string, description: string): string {
+export interface TutoringView {
+  child: ChildConfig;
+  accent: AccentPreset;
+  /** Seances notees par le prof pour lesquelles aucun exercice n'a encore ete genere. */
+  pendingNotes: TutorNote[];
+  proposals: { proposal: Proposal; note?: TutorNote }[];
+  applied: AppliedExercise[];
+}
+
+function childBadge(entry: { child: ChildConfig; accent: AccentPreset }, subject: string): string {
   return `
-    <div class="card">
-      <div class="card-title">${escapeHtml(title)}</div>
-      <p class="empty">${escapeHtml(description)}</p>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;${childColorVars(entry.accent)}">
+      <span class="child-avatar" style="width:26px;height:26px;flex-basis:26px;font-size:11.5px">${escapeHtml(
+        entry.child.displayName.slice(0, 1)
+      )}</span>
+      <span style="font-weight:700;font-size:13.5px">${escapeHtml(entry.child.displayName)}</span>
+      <span style="color:var(--text-secondary);font-size:12.5px">· ${escapeHtml(subject)}</span>
     </div>
+  `;
+}
+
+function tutorNoteBlock(note: TutorNote): string {
+  return `
+    <div class="section-label">Note du prof de maison</div>
+    <div style="font-size:13px;line-height:1.5;margin-bottom:12px;white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(
+      note.done || "(non precise)"
+    )}</div>
+    <div class="section-label">Difficulte notee</div>
+    <div style="font-size:13px;line-height:1.5;color:var(--warning);white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(
+      note.difficulty || "(non precisee)"
+    )}</div>
+  `;
+}
+
+/**
+ * Le texte genere est presente dans un champ modifiable, et c'est son contenu
+ * au moment du clic qui part chez l'enfant : le parent peut donc corriger le
+ * modele avant publication, ce qui est le seul vrai garde-fou sur un texte
+ * ecrit a partir d'une note venue de l'exterieur.
+ */
+export function renderDevoirMaison(views: TutoringView[], options: { error?: string; aiConfigured: boolean }): string {
+  const toGenerate = views.flatMap((view) => view.pendingNotes.map((note) => ({ view, note })));
+  const pending = views.flatMap((view) => view.proposals.map((entry) => ({ view, ...entry })));
+  const applied = views.flatMap((view) => view.applied.map((item) => ({ view, item })));
+
+  const generateCards = toGenerate
+    .map(
+      ({ view, note }) => `
+        <section class="card">
+          ${childBadge(view, note.subject)}
+          ${tutorNoteBlock(note)}
+          <form method="post" action="/parent/devoir-maison/generer" style="margin-top:14px">
+            <input type="hidden" name="childSlug" value="${escapeHtml(view.child.slug)}" />
+            <input type="hidden" name="noteId" value="${escapeHtml(note.id)}" />
+            <button type="submit" class="save-button"${options.aiConfigured ? "" : " disabled"}>Generer un exercice</button>
+          </form>
+        </section>
+      `
+    )
+    .join("");
+
+  const pendingCards = pending
+    .map(
+      ({ view, proposal, note }) => `
+        <section class="card dm-card">
+          <div>
+            ${childBadge(view, proposal.subject)}
+            ${note ? tutorNoteBlock(note) : `<p class="empty">La note d'origine a ete purgee.</p>`}
+          </div>
+          <div style="display:flex;flex-direction:column">
+            <div class="section-label">Exercice genere par l'IA</div>
+            <form method="post" action="/parent/devoir-maison/appliquer" style="display:flex;flex-direction:column;flex:1">
+              <input type="hidden" name="childSlug" value="${escapeHtml(view.child.slug)}" />
+              <input type="hidden" name="proposalId" value="${escapeHtml(proposal.id)}" />
+              <textarea name="exercise" class="dm-exercise" maxlength="2000">${escapeHtml(proposal.exercise)}</textarea>
+              <div class="dm-actions">
+                <button type="submit" formaction="/parent/devoir-maison/regenerer" class="ghost-button"${
+                  options.aiConfigured ? "" : " disabled"
+                }>Regenerer</button>
+                <button type="submit" class="save-button">Appliquer</button>
+              </div>
+            </form>
+          </div>
+        </section>
+      `
+    )
+    .join("");
+
+  const appliedRows = applied
+    .map(
+      ({ view, item }) => `
+        <div class="dm-applied">
+          <div style="font-size:13px;overflow-wrap:anywhere"><b>${escapeHtml(view.child.displayName)}</b> · ${escapeHtml(
+            item.subject
+          )} — ${escapeHtml(item.exercise.split("\n")[0].slice(0, 120))}</div>
+          <span class="badge ${item.done ? "badge-done" : "badge-todo"}">${item.done ? "Fait" : "A faire"}</span>
+        </div>
+      `
+    )
+    .join("");
+
+  return `
+    ${options.error ? `<div class="notice notice-error">${escapeHtml(options.error)}</div>` : ""}
+    ${
+      options.aiConfigured
+        ? ""
+        : `<div class="notice notice-warn">La generation est inactive tant que le secret GEMINI_API_KEY n'est pas defini sur le Worker. Les seances du prof sont bien enregistrees en attendant.</div>`
+    }
+
+    ${toGenerate.length ? `<div class="section-label">Seances a traiter</div>${generateCards}` : ""}
+    ${pending.length ? `<div class="section-label">En attente de validation</div>${pendingCards}` : ""}
+    ${
+      toGenerate.length === 0 && pending.length === 0
+        ? `<div class="card"><p class="empty">Rien a valider. Les seances notees par le prof de maison apparaitront ici.</p></div>`
+        : ""
+    }
+    ${appliedRows ? `<div class="section-label" style="margin-top:8px">Deja appliques</div>${appliedRows}` : ""}
   `;
 }
 
@@ -461,16 +575,34 @@ export function renderReglages(data: ParentChildData[], prefs: ParentPreferences
             </form>
           </div>
           <div style="margin-bottom:14px">
+            <div class="section-label">Page du prof de maison</div>
+            ${
+              entry.hasTutorPin
+                ? '<p class="empty" style="margin-bottom:8px">Un code est defini. En saisir un nouveau deconnecte le prof.</p>'
+                : '<div class="alert alert-warn" style="margin-bottom:8px"><div class="alert-bar"></div><div><div class="alert-title">Aucun code defini</div><div class="alert-detail">La page du prof est bloquee tant qu\'il n\'en a pas un.</div></div></div>'
+            }
+            <p class="empty" style="margin-bottom:8px">Lien a transmettre : <code>/prof/${escapeHtml(entry.child.tutorSlug)}</code></p>
+            <form method="post" action="/parent/code" class="pin-set-form">
+              <input type="hidden" name="scope" value="tutor" />
+              <input type="hidden" name="childSlug" value="${escapeHtml(entry.child.slug)}" />
+              <input type="text" name="pin" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" autocomplete="off"
+                     placeholder="5 chiffres" aria-label="Code du prof de ${escapeHtml(entry.child.displayName)}" required />
+              <button type="submit" class="save-button">${entry.hasTutorPin ? "Changer le code" : "Definir le code"}</button>
+            </form>
+          </div>
+          <div style="margin-bottom:14px">
+            <div class="section-label">Matieres - devoir maison</div>
+            <div class="chip-row">
+              ${entry.child.homeworkSubjects.map((subject) => `<span class="chip">${escapeHtml(subject)}</span>`).join("")}
+            </div>
+          </div>
+          <div style="margin-bottom:14px">
             <div class="section-label">Prieres suivies</div>
             <div class="chip-row">
               ${prayersFor(entry.child)
                 .map((prayer) => `<span class="chip">${escapeHtml(prayer.label)}</span>`)
                 .join("")}
             </div>
-          </div>
-          <div>
-            <div class="section-label">Matieres - devoir maison</div>
-            <p class="empty">A configurer quand le devoir maison sera en place.</p>
           </div>
         </section>
       `

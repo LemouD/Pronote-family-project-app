@@ -1,6 +1,7 @@
-import { CHILD_PIN_LENGTH } from "./childAuth";
+import { PIN_LENGTH } from "./pinAuth";
 import { type ChildContext, renderCheck, renderChildShell } from "./childShell";
 import type { DisplayItem } from "./displayItems";
+import type { AppliedExercise } from "./homeTutoring";
 import { dayLabel, escapeHtml } from "./html";
 import type { PrayerView } from "./prayers";
 import { ACCENTS, avatarsFor, THEME_LABELS, THEMES } from "./preferences";
@@ -79,6 +80,39 @@ export function renderChildPrayers(context: ChildContext, prayers: PrayerView[])
   });
 }
 
+const BULB_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 00-4 12.7c.6.5 1 1.2 1 2.05V17h6v-.25c0-.85.4-1.55 1-2.05A7 7 0 0012 2z"/></svg>`;
+
+export function renderChildTutoring(context: ChildContext, exercises: AppliedExercise[]): string {
+  const toggleUrl = `/enfant/${context.child.slug}/devoir-maison/toggle`;
+
+  const body = exercises.length
+    ? exercises
+        .map((exercise) =>
+          renderCheck({
+            id: exercise.id,
+            toggleUrl,
+            done: exercise.done,
+            body: `
+              <span class="item-body">
+                <span class="item-meta"><span class="tag">${escapeHtml(exercise.subject)}</span></span>
+                <span class="item-text">${escapeHtml(exercise.exercise)}</span>
+              </span>
+            `
+          })
+        )
+        .join("")
+    : `<p class="empty">Aucun exercice en plus pour le moment.</p>`;
+
+  return renderChildShell({
+    context,
+    active: "devoir-maison",
+    title: "Tes exercices en plus",
+    subtitle: "Donnes par ton prof, choisis pour toi",
+    headIcon: BULB_ICON,
+    body
+  });
+}
+
 const LOCK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`;
 
 /**
@@ -97,13 +131,13 @@ export function renderChildLogin(context: ChildContext, options: { error?: strin
         type="password"
         name="pin"
         inputmode="numeric"
-        pattern="[0-9]{${CHILD_PIN_LENGTH}}"
-        maxlength="${CHILD_PIN_LENGTH}"
+        pattern="[0-9]{${PIN_LENGTH}}"
+        maxlength="${PIN_LENGTH}"
         autocomplete="off"
         required
         autofocus
-        aria-label="Ton code a ${CHILD_PIN_LENGTH} chiffres"
-        placeholder="${"•".repeat(CHILD_PIN_LENGTH)}"
+        aria-label="Ton code a ${PIN_LENGTH} chiffres"
+        placeholder="${"•".repeat(PIN_LENGTH)}"
       />
       <button type="submit">Entrer</button>
     </form>
@@ -113,7 +147,7 @@ export function renderChildLogin(context: ChildContext, options: { error?: strin
     context,
     active: null,
     title: `Bonjour ${child.displayName}`,
-    subtitle: `Entre ton code a ${CHILD_PIN_LENGTH} chiffres pour voir tes devoirs.`,
+    subtitle: `Entre ton code a ${PIN_LENGTH} chiffres pour voir tes devoirs.`,
     headIcon: LOCK_ICON,
     body,
     error: options.error
