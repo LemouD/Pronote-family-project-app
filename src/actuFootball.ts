@@ -61,7 +61,12 @@ export interface Match {
 
 async function callFootball(env: Env, path: string): Promise<unknown | null> {
   const apiKey = readSecret(env, "FOOTBALL_API_KEY");
-  if (!apiKey) return null;
+  if (!apiKey) {
+    // Silencieux, ce cas est indiscernable d'une panne reseau dans les
+    // journaux - et c'est exactement ce qui a coute des heures sur Gemini.
+    console.error(`callFootball(${path}) : FOOTBALL_API_KEY absente du Worker`);
+    return null;
+  }
 
   try {
     const response = await fetch(`${ENDPOINT}${path}`, {
@@ -101,6 +106,7 @@ export async function getTeams(env: Env, code: string): Promise<Team[]> {
       .filter((team) => Number.isFinite(team.id) && team.name.length > 0)
       .sort((a, b) => a.name.localeCompare(b.name, "fr"));
 
+    if (list.length === 0) console.error(`getTeams(${code}) : reponse sans aucun club exploitable`);
     return list.length > 0 ? list : null;
   });
 

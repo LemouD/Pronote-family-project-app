@@ -744,9 +744,11 @@ function renderActuSettings(view: ActuSettingsView, childName: string): string {
       : `<p class="empty">Choisis un championnat ci-dessus et valide pour voir ses clubs.</p>`;
 
   return `
-    <div style="margin-bottom:14px">
+    <div style="margin-bottom:14px" id="radar-${escapeHtml(view.childSlug)}">
       <div class="section-label">${escapeHtml(ACTU_LABEL)}</div>
-      <form method="get" action="/parent/reglages" class="actu-field" style="margin-bottom:12px">
+      <!-- L'ancre ramene au bloc apres le rechargement : sans elle la page
+           repart en haut et la liste des clubs apparait hors de l'ecran. -->
+      <form method="get" action="/parent/reglages#radar-${escapeHtml(view.childSlug)}" class="actu-field" style="margin-bottom:12px">
         <span class="section-label">Championnat</span>
         <select name="championnat-${escapeHtml(view.childSlug)}" aria-label="Championnat de ${escapeHtml(childName)}">
           <option value="">— aucun —</option>
