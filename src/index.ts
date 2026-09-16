@@ -52,7 +52,7 @@ import { renderParentShell, type ParentSectionId } from "./parentShell";
 import type { ChildContext } from "./childShell";
 import { annotateNewlyDone, markSeen } from "./parentView";
 import { serveFont } from "./fonts";
-import { getGrades, overallAverage, overallEvolution, subjectEvolution, summarizeBySubject } from "./grades";
+import { getGrades, overallAverage, overallEvolution, recentGrades, subjectEvolution, summarizeBySubject } from "./grades";
 import { getPrayerDay, getPrayerProgress, isKnownPrayerId, setPrayerStatus, todayInParis } from "./prayers";
 import {
   type ChildPreferences,
@@ -171,7 +171,7 @@ async function loadParentData(env: Env): Promise<ParentChildData[]> {
 
   return Promise.all(
     children.map(async (child) => {
-      const [{ items: homework, error }, customTasks, sync, prayers, prefs, pinConfigured, tutorPinConfigured, examCompleted] = await Promise.all([
+      const [{ items: homework, error }, customTasks, sync, prayers, prefs, pinConfigured, tutorPinConfigured, examCompleted, notes, proposals, grades] = await Promise.all([
         getHomeworkSafe(env, child),
         listCustomTasks(env, child),
         getExternalSyncStatus(env, child),
@@ -179,10 +179,28 @@ async function loadParentData(env: Env): Promise<ParentChildData[]> {
         getChildPreferences(env, child),
         hasPin(env, childPinScope(child)),
         hasPin(env, tutorPinScope(child)),
-        newlyCompleted(env, child)
+        newlyCompleted(env, child),
+        // La vue d'ensemble doit dire ce qui attend vraiment le parent :
+        // seances non traitees, propositions non validees, dernieres notes.
+        listNotes(env, child),
+        listProposals(env, child),
+        getGrades(env, child)
       ]);
       const items = await annotateNewlyDone(env, child, mergeForDisplay(homework, customTasks));
-      return { child, items, error, sync, prayers, accent: findAccent(prefs.accentId), hasPin: pinConfigured, hasTutorPin: tutorPinConfigured, examCompleted };
+      const proposedNoteIds = new Set(proposals.map((proposal) => proposal.noteId));
+      return {
+        child,
+        items,
+        error,
+        sync,
+        prayers,
+        accent: findAccent(prefs.accentId),
+        hasPin: pinConfigured,
+        hasTutorPin: tutorPinConfigured,
+        examCompleted,
+        tutoringPending: notes.filter((note) => !proposedNoteIds.has(note.id)).length + proposals.length,
+        recentGrades: recentGrades(grades)
+      };
     })
   );
 }

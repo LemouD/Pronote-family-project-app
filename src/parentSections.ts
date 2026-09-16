@@ -2,6 +2,7 @@ import { renderLineChart } from "./charts";
 import type { ChildConfig } from "./children";
 import { formatGrade, type Series, type SubjectSummary } from "./grades";
 import type { ExamSession } from "./examPrep";
+import type { RecentGrade } from "./grades";
 import type { AppliedExercise, Proposal, TutorNote } from "./homeTutoring";
 import { dayLabel, escapeHtml, formatSessionDate, relativeTime } from "./html";
 import type { ParentDisplayItem } from "./parentView";
@@ -23,6 +24,10 @@ export interface ParentChildData {
   hasTutorPin: boolean;
   /** Exercices de preparation d'examen termines depuis la derniere visite. */
   examCompleted: ExamSession[];
+  /** Seances et propositions en attente d'une action du parent. */
+  tutoringPending: number;
+  /** Dernieres notes importees, les plus recentes d'abord. */
+  recentGrades: RecentGrade[];
 }
 
 /** Au-dela de ce delai sans import reussi, la synchro externe est signalee comme en retard. */
@@ -58,7 +63,14 @@ function syncAlert(entry: ParentChildData): SyncAlert {
     return { level: "ok", title: `${name} en connexion directe`, detail: "Les devoirs sont lus depuis Pronote a la demande." };
   }
   if (!entry.sync.syncedAt) {
-    return { level: "danger", title: `Synchro ${name} jamais executee`, detail: "Lancer le bootstrap pour cet enfant." };
+    // Pas une panne mais une mise en service qui reste a faire : en rouge, cet
+    // avertissement resterait allume des jours et apprendrait a ignorer les
+    // alertes, y compris les vraies.
+    return {
+      level: "warn",
+      title: `${name} pas encore connecte a Pronote`,
+      detail: "Ses devoirs n'apparaitront qu'une fois le bootstrap lance avec ses identifiants."
+    };
   }
 
   const elapsedHours = (Date.now() - new Date(entry.sync.syncedAt).getTime()) / 3_600_000;
@@ -144,6 +156,37 @@ export function renderOverview(data: ParentChildData[]): string {
     )
     .join("");
 
+  const totalPending = data.reduce((total, entry) => total + entry.tutoringPending, 0);
+
+  const pendingRows = data
+    .filter((entry) => entry.tutoringPending > 0)
+    .map(
+      (entry) => `
+        <div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px">
+          <span style="font-weight:600">${escapeHtml(entry.child.displayName)}</span>
+          <span class="muted">${entry.tutoringPending} en attente</span>
+        </div>
+      `
+    )
+    .join("");
+
+  const recentRows = data
+    .flatMap((entry) => entry.recentGrades.map((grade) => ({ entry, grade })))
+    .sort((a, b) => b.grade.date.localeCompare(a.grade.date))
+    .slice(0, 4)
+    .map(
+      ({ entry, grade }) => `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <div style="min-width:0">
+            <div style="font-size:12.5px;font-weight:600;overflow-wrap:anywhere">${escapeHtml(grade.subject)}</div>
+            <div class="grade-class">${escapeHtml(entry.child.displayName)}</div>
+          </div>
+          <div class="grade-value">${escapeHtml(formatGrade(grade.outOf20))}/20</div>
+        </div>
+      `
+    )
+    .join("");
+
   return `
     <div class="grid-children">${cards || `<div class="card"><p class="empty">Aucun enfant configure.</p></div>`}</div>
     <div class="grid-lower">
@@ -155,12 +198,24 @@ export function renderOverview(data: ParentChildData[]): string {
         <div style="display:flex;flex-direction:column;gap:10px">${alerts}</div>
       </section>
       <section class="card">
-        <div class="card-title">Devoir maison a valider</div>
-        <p class="empty">Bientot disponible.</p>
+        <div class="card-title">
+          Devoir maison a valider
+          ${totalPending > 0 ? `<span class="count">${totalPending}</span>` : ""}
+        </div>
+        ${
+          totalPending > 0
+            ? `<div style="display:flex;flex-direction:column;gap:10px">${pendingRows}</div>
+               <a class="muted" href="/parent/devoir-maison">Ouvrir</a>`
+            : `<p class="empty">Rien a valider pour le moment.</p>`
+        }
       </section>
       <section class="card">
         <div class="card-title">Notes recentes</div>
-        <p class="empty">Bientot disponible.</p>
+        ${
+          recentRows
+            ? `<div style="display:flex;flex-direction:column;gap:10px">${recentRows}</div>`
+            : `<p class="empty">Aucune note importee pour le moment.</p>`
+        }
       </section>
     </div>
   `;
