@@ -1,3 +1,5 @@
+import type { ExamId } from "./examPrep";
+
 /**
  * Liste des enfants suivis par l'appli. Pour ajouter un enfant (le sien ou
  * celui d'une autre famille qui reprend ce projet) :
@@ -54,6 +56,11 @@ export interface ChildConfig {
    * prof choisit dans son formulaire.
    */
   homeworkSubjects: string[];
+  /**
+   * Examen prepare cette annee, si l'enfant est concerne. Ouvre l'onglet
+   * "Brevet" et la generation d'exercices (voir src/examPrep.ts).
+   */
+  examPrep?: ExamId;
 }
 
 // Le suffixe aleatoire de chaque slug est genere avec :
@@ -71,7 +78,8 @@ export const children: ChildConfig[] = [
     // Foot et manga.
     avatars: ["⚽", "🏆", "👟", "🥅", "🧤", "🥇", "🍥", "🐉", "🗡️", "🥷", "🔥", "🍜"],
     tutorSlug: "malick-9PgS5sSs4qt-",
-    homeworkSubjects: ["Mathematiques", "Anglais"]
+    homeworkSubjects: ["Mathematiques", "Anglais"],
+    examPrep: "brevet"
   },
   {
     slug: "codou-tBCiBx5FYmTB",

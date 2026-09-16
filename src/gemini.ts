@@ -1,5 +1,6 @@
 import type { ChildConfig } from "./children";
 import type { Env } from "./env";
+import type { ExamChoice } from "./examPrep";
 import type { TutorNote } from "./homeTutoring";
 
 /**
@@ -132,4 +133,84 @@ export async function generateExercise(env: Env, child: ChildConfig, note: Tutor
   if (exercise.length === 0) throw new Error("Reponse Gemini inattendue : exercice vide.");
 
   return exercise;
+}
+
+const EXAM_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    exercice: { type: "STRING", description: "L'enonce complet, sans aucune reponse." },
+    correction: { type: "STRING", description: "La correction detaillee, avec le raisonnement." }
+  },
+  required: ["exercice", "correction"]
+};
+
+/**
+ * Exercice de preparation d'examen. Tout ce qui entre dans le prompt vient de
+ * listes fermees (voir examPrep.ts) : l'enfant ne saisit aucun texte libre,
+ * donc rien qu'il ecrit ne peut detourner le modele.
+ *
+ * L'enonce et la correction sont demandes dans le meme appel : une seule
+ * requete facturee, et une correction qui correspond forcement a l'exercice.
+ */
+export async function generateExamExercise(
+  env: Env,
+  child: ChildConfig,
+  choice: ExamChoice,
+  examLabel: string
+): Promise<{ exercise: string; correction: string }> {
+  const apiKey = env.GEMINI_API_KEY;
+  if (typeof apiKey !== "string" || apiKey.length === 0) {
+    throw new Error("GEMINI_API_KEY n'est pas configure sur le Worker.");
+  }
+
+  const prompt = [
+    `Tu prepares ${child.displayName}, en classe de ${child.schoolYear}, a l'examen : ${examLabel}.`,
+    `Matiere : ${choice.subject.label}.`,
+    `Notion a travailler : ${choice.topic}.`,
+    "",
+    choice.format.instruction,
+    "",
+    "Contraintes :",
+    "- en francais, niveau exactement conforme au programme de l'examen vise ;",
+    "- tutoie l'eleve ;",
+    "- numerote les questions ;",
+    "- l'enonce ne doit contenir aucune reponse ni indice de correction ;",
+    "- la correction doit detailler le raisonnement, pas seulement donner le resultat."
+  ].join("\n");
+
+  const response = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.8,
+        maxOutputTokens: 1600,
+        responseMimeType: "application/json",
+        responseSchema: EXAM_SCHEMA
+      }
+    }),
+    signal: AbortSignal.timeout(TIMEOUT_MS)
+  });
+
+  if (!response.ok) throw new Error(`Gemini : ${await describeFailure(response)}`);
+
+  const body = (await response.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+  const raw = body.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (typeof raw !== "string") throw new Error("Reponse Gemini inattendue : aucun texte.");
+
+  let parsed: { exercice?: unknown; correction?: unknown };
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Reponse Gemini inattendue : JSON illisible.");
+  }
+
+  const exercise = typeof parsed.exercice === "string" ? parsed.exercice.trim() : "";
+  const correction = typeof parsed.correction === "string" ? parsed.correction.trim() : "";
+  if (exercise.length === 0 || correction.length === 0) {
+    throw new Error("Reponse Gemini inattendue : exercice ou correction vide.");
+  }
+
+  return { exercise, correction };
 }

@@ -1,6 +1,7 @@
 import { PIN_LENGTH } from "./pinAuth";
 import { type ChildContext, renderCheck, renderChildShell } from "./childShell";
 import type { DisplayItem } from "./displayItems";
+import type { ExamCatalogue, ExamSessionView, QuotaStatus } from "./examPrep";
 import type { AppliedExercise } from "./homeTutoring";
 import { dayLabel, escapeHtml } from "./html";
 import type { PrayerView } from "./prayers";
@@ -110,6 +111,106 @@ export function renderChildTutoring(context: ChildContext, exercises: AppliedExe
     subtitle: "Donnes par ton prof, choisis pour toi",
     headIcon: BULB_ICON,
     body
+  });
+}
+
+const CAP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>`;
+
+/**
+ * Preparation d'examen. Trois listes deroulantes, aucun champ libre : c'est
+ * ce qui garantit que rien de ce que l'enfant saisit n'atteint le modele.
+ *
+ * La correction n'est pas dans la page tant qu'elle n'a pas ete demandee :
+ * elle reste cote serveur, pour qu'elle ne soit pas lisible dans le code
+ * source avant d'avoir cherche.
+ */
+export function renderChildExamPrep(
+  context: ChildContext,
+  catalogue: ExamCatalogue,
+  sessions: ExamSessionView[],
+  quota: QuotaStatus,
+  options: { error?: string } = {}
+): string {
+  const { child } = context;
+  const base = `/enfant/${escapeHtml(child.slug)}/brevet`;
+
+  const subjectGroups = catalogue.subjects
+    .map(
+      (subject) => `
+        <optgroup label="${escapeHtml(subject.label)}">
+          ${subject.topics
+            .map(
+              (topic) =>
+                `<option value="${escapeHtml(`${subject.id}|${topic}`)}">${escapeHtml(topic)}</option>`
+            )
+            .join("")}
+        </optgroup>
+      `
+    )
+    .join("");
+
+  const formatOptions = catalogue.formats
+    .map((format) => `<option value="${escapeHtml(format.id)}">${escapeHtml(format.label)}</option>`)
+    .join("");
+
+  const form = `
+    <form method="post" action="${base}/generer" class="exam-form">
+      <label class="exam-label" for="exam-topic">Ce que tu veux travailler</label>
+      <select id="exam-topic" name="topic" required>${subjectGroups}</select>
+
+      <label class="exam-label" for="exam-format">Type d'exercice</label>
+      <select id="exam-format" name="formatId" required>${formatOptions}</select>
+
+      <button type="submit"${quota.remaining === 0 ? " disabled" : ""}>
+        ${quota.remaining === 0 ? "Quota du jour atteint" : "Generer un exercice"}
+      </button>
+      <p class="exam-quota">${quota.remaining} exercice(s) restant(s) aujourd'hui</p>
+    </form>
+  `;
+
+  const list = sessions.length
+    ? sessions
+        .map(
+          (session) => `
+            <article class="exam-card ${session.done ? "done" : ""}">
+              <div class="item-meta">
+                <span class="tag">${escapeHtml(session.subjectLabel)}</span>
+                <span class="when">${escapeHtml(session.topic)}</span>
+                ${session.done ? `<span class="exam-done">Termine</span>` : ""}
+              </div>
+              <div class="exam-text">${escapeHtml(session.exercise)}</div>
+              ${
+                session.correction === null
+                  ? `<form method="post" action="${base}/correction" class="exam-actions">
+                       <input type="hidden" name="sessionId" value="${escapeHtml(session.id)}" />
+                       <button type="submit" class="exam-ghost">Voir la correction</button>
+                     </form>`
+                  : `<div class="exam-label" style="margin-top:14px">Correction</div>
+                     <div class="exam-text exam-correction">${escapeHtml(session.correction)}</div>`
+              }
+              ${
+                session.done
+                  ? ""
+                  : `<form method="post" action="${base}/valider" class="exam-actions">
+                       <input type="hidden" name="sessionId" value="${escapeHtml(session.id)}" />
+                       <button type="submit">J'ai termine</button>
+                     </form>`
+              }
+            </article>
+          `
+        )
+        .join("")
+    : `<p class="empty">Choisis une notion ci-dessus pour commencer.</p>`;
+
+  return renderChildShell({
+    context,
+    active: "brevet",
+    title: `Preparation ${catalogue.label}`,
+    subtitle: "Choisis ce que tu veux reviser, l'exercice est fait pour toi",
+    headIcon: CAP_ICON,
+    beforeList: `<div class="exam-form-wrap">${form}</div>`,
+    body: list,
+    error: options.error
   });
 }
 
