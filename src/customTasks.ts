@@ -1,5 +1,6 @@
 import type { ChildConfig } from "./children";
 import type { Env } from "./env";
+import { isThisWeekOrLater } from "./html";
 
 /**
  * Taches ajoutees a la main par un parent (pas de contrepartie Pronote), en
@@ -25,8 +26,7 @@ export function isCustomTaskId(id: string): boolean {
 
 const MAX_DESCRIPTION_LENGTH = 300;
 const MAX_CREATED_BY_LENGTH = 30;
-/** Purge les taches trop vieilles pour eviter que la liste ne grossisse indefiniment. */
-const MAX_AGE_DAYS = 7;
+
 
 function storageKey(child: ChildConfig): string {
   return `custom-tasks:${child.slug}`;
@@ -41,9 +41,13 @@ async function writeAll(env: Env, child: ChildConfig, tasks: CustomTask[]): Prom
   await env.PRONOTE_CACHE.put(storageKey(child), JSON.stringify(tasks));
 }
 
+/**
+ * Meme frontiere que l'affichage : la semaine repart a zero le lundi. Une
+ * tache de la semaine passee n'est pas seulement masquee, elle est retiree du
+ * stockage - sinon le KV grossirait indefiniment avec des taches invisibles.
+ */
 function pruneOld(tasks: CustomTask[]): CustomTask[] {
-  const cutoff = Date.now() - MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
-  return tasks.filter((task) => new Date(task.createdAt).getTime() >= cutoff);
+  return tasks.filter((task) => isThisWeekOrLater(task.deadline));
 }
 
 export async function listCustomTasks(env: Env, child: ChildConfig): Promise<CustomTask[]> {

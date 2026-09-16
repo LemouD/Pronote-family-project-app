@@ -372,7 +372,15 @@ export default {
       }
 
       if (sub === "" && request.method === "GET") {
-        return html(renderTutorPage(child, await listNotes(env, child), { saved: url.searchParams.has("ok") }));
+        const subjectFilter = url.searchParams.get("matiere");
+        return html(
+          renderTutorPage(child, await listNotes(env, child), {
+            saved: url.searchParams.has("ok"),
+            // Une matiere inconnue est ignoree plutot que refusee : le
+            // filtre est un confort, pas un controle d'acces.
+            subjectFilter: subjectFilter && child.homeworkSubjects.includes(subjectFilter) ? subjectFilter : null
+          })
+        );
       }
 
       if (sub === "" && request.method === "POST") {

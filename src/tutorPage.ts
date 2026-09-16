@@ -1,6 +1,6 @@
 import type { ChildConfig } from "./children";
 import { fontFace, FONTS } from "./fonts";
-import { escapeHtml } from "./html";
+import { escapeHtml, formatSessionDate } from "./html";
 import type { TutorNote } from "./homeTutoring";
 import { PIN_LENGTH } from "./pinAuth";
 
@@ -76,6 +76,14 @@ const TUTOR_STYLE = `
   .entry-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-secondary); margin-top: 8px; }
   .empty { color: var(--text-secondary); font-size: 13px; font-style: italic; margin: 0; }
 
+  .filter-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .filter-chip {
+    display: inline-block; padding: 6px 12px; border-radius: 20px;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--text-secondary); font-size: 12.5px; font-weight: 600; text-decoration: none;
+  }
+  .filter-chip.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
   .pin-input { letter-spacing: .4em; text-align: center; font-size: 22px; }
 `;
 
@@ -126,23 +134,40 @@ export function renderTutorPinMissing(child: ChildConfig): string {
   );
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
-}
-
-export function renderTutorPage(child: ChildConfig, notes: TutorNote[], options: { saved?: boolean } = {}): string {
+export function renderTutorPage(
+  child: ChildConfig,
+  notes: TutorNote[],
+  options: { saved?: boolean; subjectFilter?: string | null } = {}
+): string {
   const subjectOptions = child.homeworkSubjects
     .map((subject) => `<option value="${escapeHtml(subject)}">${escapeHtml(subject)}</option>`)
     .join("");
 
-  const history = notes.length
-    ? notes
+  // Les seances s'accumulent : un filtre par matiere evite de derouler des
+  // mois d'historique pour retrouver la derniere seance de maths.
+  const filtered = options.subjectFilter ? notes.filter((note) => note.subject === options.subjectFilter) : notes;
+
+  const filterLink = (subject: string | null, label: string) => {
+    const active = (options.subjectFilter ?? null) === subject;
+    const href = subject ? `?matiere=${encodeURIComponent(subject)}` : "?";
+    return `<a class="filter-chip${active ? " active" : ""}" href="${escapeHtml(href)}">${escapeHtml(label)}</a>`;
+  };
+
+  const filters =
+    child.homeworkSubjects.length > 1
+      ? `<div class="filter-row">${filterLink(null, "Toutes")}${child.homeworkSubjects
+          .map((subject) => filterLink(subject, subject))
+          .join("")}</div>`
+      : "";
+
+  const history = filtered.length
+    ? filtered
         .map(
           (note) => `
             <div class="entry">
               <div class="entry-head">
                 <span class="entry-subject">${escapeHtml(note.subject)}</span>
-                <span class="entry-date">${escapeHtml(formatDate(note.createdAt))}</span>
+                <span class="entry-date">${escapeHtml(formatSessionDate(note.createdAt))}</span>
               </div>
               ${note.done ? `<div class="entry-text">${escapeHtml(note.done)}</div>` : ""}
               ${
@@ -154,7 +179,7 @@ export function renderTutorPage(child: ChildConfig, notes: TutorNote[], options:
           `
         )
         .join("")
-    : `<p class="empty">Aucune seance enregistree pour le moment.</p>`;
+    : `<p class="empty">Aucune seance pour ce filtre.</p>`;
 
   return shell(
     `Suivi de ${child.displayName}`,
@@ -181,6 +206,7 @@ export function renderTutorPage(child: ChildConfig, notes: TutorNote[], options:
 
       <div class="card">
         <h2>Seances precedentes</h2>
+        ${filters}
         ${history}
       </div>
     `
