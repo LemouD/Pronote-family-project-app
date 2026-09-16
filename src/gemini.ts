@@ -63,6 +63,83 @@ async function describeFailure(response: Response): Promise<string> {
   }
 }
 
+/**
+ * Lit la cle, en retirant les espaces et retours a la ligne.
+ *
+ * Une cle collee depuis un navigateur embarque souvent un retour a la ligne
+ * invisible, et Google repond alors "API key not valid" - un message qui
+ * accuse la cle elle-meme et envoie chercher au mauvais endroit.
+ */
+function readApiKey(env: Env): string {
+  const key = typeof env.GEMINI_API_KEY === "string" ? env.GEMINI_API_KEY.trim() : "";
+  if (key.length === 0) throw new GeminiError("GEMINI_API_KEY n'est pas configure sur le Worker.", false);
+  return key;
+}
+
+/**
+ * Distingue une panne passagere d'un probleme de configuration. Les deux
+ * remontent a l'utilisateur, mais pas avec le meme conseil : "reessaie dans
+ * quelques minutes" n'a aucun sens si la cle est invalide, et "verifie la
+ * cle" envoie chercher au mauvais endroit quand Google est simplement
+ * sature.
+ */
+export class GeminiError extends Error {
+  constructor(message: string, readonly transient: boolean) {
+    super(message);
+    this.name = "GeminiError";
+  }
+}
+
+/**
+ * Codes que Google renvoie quand il faut simplement patienter : saturation du
+ * modele (503), trop de requetes (429), incident passager (500, 504).
+ */
+const TRANSIENT_STATUSES = new Set([429, 500, 503, 504]);
+
+/** Attentes avant chaque reessai. Trois tentatives au total. */
+const RETRY_DELAYS_MS = [1000, 2500];
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Appelle Gemini en reessayant les pannes passageres.
+ *
+ * Une saturation revient immediatement, pas au bout du delai d'attente : le
+ * cout reel d'un reessai est donc de l'ordre de la seconde, pas de la
+ * dizaine. Sans ca, un enfant qui clique "Generer" un dimanche soir - quand
+ * le modele est le plus sollicite - verrait un echec sec.
+ */
+async function callGemini(apiKey: string, payload: unknown): Promise<Response> {
+  let last = "";
+
+  for (let attempt = 0; ; attempt++) {
+    let response: Response;
+    try {
+      response = await fetch(ENDPOINT, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(TIMEOUT_MS)
+      });
+    } catch (error) {
+      // Coupure reseau ou delai depasse : passager par nature.
+      last = error instanceof Error ? error.message : String(error);
+      if (attempt >= RETRY_DELAYS_MS.length) throw new GeminiError(`Gemini injoignable : ${last}`, true);
+      await wait(RETRY_DELAYS_MS[attempt]);
+      continue;
+    }
+
+    if (response.ok) return response;
+
+    const transient = TRANSIENT_STATUSES.has(response.status);
+    last = await describeFailure(response);
+    if (!transient || attempt >= RETRY_DELAYS_MS.length) throw new GeminiError(`Gemini : ${last}`, transient);
+    await wait(RETRY_DELAYS_MS[attempt]);
+  }
+}
+
 function buildPrompt(child: ChildConfig, note: TutorNote): string {
   return [
     `Tu prepares un exercice court pour ${child.displayName}, en classe de ${child.schoolYear}.`,
@@ -96,34 +173,24 @@ function buildPrompt(child: ChildConfig, note: TutorNote): string {
  * et le parent doit le voir tel quel.
  */
 export async function generateExercise(env: Env, child: ChildConfig, note: TutorNote): Promise<string> {
-  const apiKey = env.GEMINI_API_KEY;
-  if (typeof apiKey !== "string" || apiKey.length === 0) {
-    throw new Error("GEMINI_API_KEY n'est pas configure sur le Worker.");
-  }
+  const apiKey = readApiKey(env);
 
-  const response = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: buildPrompt(child, note) }] }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 600,
-        responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA
-      }
-    }),
-    signal: AbortSignal.timeout(TIMEOUT_MS)
+  const response = await callGemini(apiKey, {
+    contents: [{ role: "user", parts: [{ text: buildPrompt(child, note) }] }],
+    generationConfig: {
+      temperature: 0.7,
+      maxOutputTokens: 600,
+      responseMimeType: "application/json",
+      responseSchema: RESPONSE_SCHEMA
+    }
   });
-
-  if (!response.ok) throw new Error(`Gemini : ${await describeFailure(response)}`);
 
   const body = (await response.json()) as {
     candidates?: { content?: { parts?: { text?: string }[] } }[];
   };
 
   const raw = body.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (typeof raw !== "string") throw new Error("Reponse Gemini inattendue : aucun texte.");
+  if (typeof raw !== "string") throw new GeminiError("Reponse Gemini inattendue : aucun texte.", false);
 
   // Sortie du modele : traitee comme une donnee non fiable. On la parse
   // defensivement, et l'appelant l'echappe avant affichage.
@@ -131,11 +198,11 @@ export async function generateExercise(env: Env, child: ChildConfig, note: Tutor
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error("Reponse Gemini inattendue : JSON illisible.");
+    throw new GeminiError("Reponse Gemini inattendue : JSON illisible.", false);
   }
 
   const exercise = typeof parsed.exercice === "string" ? parsed.exercice.trim() : "";
-  if (exercise.length === 0) throw new Error("Reponse Gemini inattendue : exercice vide.");
+  if (exercise.length === 0) throw new GeminiError("Reponse Gemini inattendue : exercice vide.", false);
 
   return exercise;
 }
@@ -163,10 +230,7 @@ export async function generateExamExercise(
   choice: ExamChoice,
   examLabel: string
 ): Promise<{ exercise: string; correction: string }> {
-  const apiKey = env.GEMINI_API_KEY;
-  if (typeof apiKey !== "string" || apiKey.length === 0) {
-    throw new Error("GEMINI_API_KEY n'est pas configure sur le Worker.");
-  }
+  const apiKey = readApiKey(env);
 
   const prompt = [
     `Tu prepares ${child.displayName}, en classe de ${child.schoolYear}, a l'examen : ${examLabel}.`,
@@ -183,38 +247,31 @@ export async function generateExamExercise(
     "- la correction doit detailler le raisonnement, pas seulement donner le resultat."
   ].join("\n");
 
-  const response = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.8,
-        maxOutputTokens: 1600,
-        responseMimeType: "application/json",
-        responseSchema: EXAM_SCHEMA
-      }
-    }),
-    signal: AbortSignal.timeout(TIMEOUT_MS)
+  const response = await callGemini(apiKey, {
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.8,
+      maxOutputTokens: 1600,
+      responseMimeType: "application/json",
+      responseSchema: EXAM_SCHEMA
+    }
   });
-
-  if (!response.ok) throw new Error(`Gemini : ${await describeFailure(response)}`);
 
   const body = (await response.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
   const raw = body.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (typeof raw !== "string") throw new Error("Reponse Gemini inattendue : aucun texte.");
+  if (typeof raw !== "string") throw new GeminiError("Reponse Gemini inattendue : aucun texte.", false);
 
   let parsed: { exercice?: unknown; correction?: unknown };
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error("Reponse Gemini inattendue : JSON illisible.");
+    throw new GeminiError("Reponse Gemini inattendue : JSON illisible.", false);
   }
 
   const exercise = typeof parsed.exercice === "string" ? parsed.exercice.trim() : "";
   const correction = typeof parsed.correction === "string" ? parsed.correction.trim() : "";
   if (exercise.length === 0 || correction.length === 0) {
-    throw new Error("Reponse Gemini inattendue : exercice ou correction vide.");
+    throw new GeminiError("Reponse Gemini inattendue : exercice ou correction vide.", false);
   }
 
   return { exercise, correction };

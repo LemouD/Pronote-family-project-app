@@ -3,7 +3,7 @@ import { addCustomTask, isCustomTaskId, listCustomTasks, setCustomTaskStatus, va
 import { mergeForDisplay } from "./displayItems";
 import type { Env } from "./env";
 import { checkAccess, childPinScope, hasPin, isValidPinFormat, type PinScope, sessionCookie, setPin, tutorPinScope, verifyPin } from "./pinAuth";
-import { generateExamExercise, generateExercise } from "./gemini";
+import { GeminiError, generateExamExercise, generateExercise } from "./gemini";
 import {
   addSession,
   catalogueFor,
@@ -243,6 +243,7 @@ async function loadTutoring(env: Env): Promise<TutoringView[]> {
  * identifiant, jamais un texte, pour ne rien refleter d'arbitraire dans la page.
  */
 const TUTORING_ERRORS: Record<string, string> = {
+  surcharge: "Le service d'IA est momentanement sature. Reessaie dans quelques minutes.",
   generation: "La generation a echoue. Reessaie, ou verifie la cle GEMINI_API_KEY.",
   introuvable: "Cette proposition n'existe plus : elle a peut-etre deja ete traitee."
 };
@@ -521,7 +522,12 @@ export default {
             await consumeQuota(env, child, today);
           } catch (error) {
             console.error(`generateExamExercise(${child.slug}) failed:`, error);
-            return showPage("La generation a echoue. Reessaie dans un moment.", 502);
+            return showPage(
+              error instanceof GeminiError && error.transient
+                ? "Trop de monde en ce moment. Reessaie dans quelques minutes."
+                : "La generation ne marche pas. Previens Maman ou Papa.",
+              error instanceof GeminiError && error.transient ? 503 : 502
+            );
           }
 
           return new Response(null, { status: 303, headers: { location: `/enfant/${child.slug}/brevet`, ...NO_STORE } });
@@ -700,7 +706,10 @@ export default {
           await saveProposal(env, child, note, exercise);
         } catch (error) {
           console.error(`generateExercise(${child.slug}) failed:`, error);
-          return back("generation");
+          // Une saturation passagere n'appelle pas le meme geste qu'une cle
+          // invalide : on ne renvoie pas le parent verifier sa configuration
+          // pour un incident qui se resout tout seul.
+          return back(error instanceof GeminiError && error.transient ? "surcharge" : "generation");
         }
         return back();
       }
