@@ -136,10 +136,11 @@ export function renderTutorPinMissing(child: ChildConfig): string {
 
 export function renderTutorPage(
   child: ChildConfig,
+  subjects: string[],
   notes: TutorNote[],
   options: { saved?: boolean; subjectFilter?: string | null } = {}
 ): string {
-  const subjectOptions = child.homeworkSubjects
+  const subjectOptions = subjects
     .map((subject) => `<option value="${escapeHtml(subject)}">${escapeHtml(subject)}</option>`)
     .join("");
 
@@ -154,8 +155,8 @@ export function renderTutorPage(
   };
 
   const filters =
-    child.homeworkSubjects.length > 1
-      ? `<div class="filter-row">${filterLink(null, "Toutes")}${child.homeworkSubjects
+    subjects.length > 1
+      ? `<div class="filter-row">${filterLink(null, "Toutes")}${subjects
           .map((subject) => filterLink(subject, subject))
           .join("")}</div>`
       : "";
