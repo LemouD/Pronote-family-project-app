@@ -2,31 +2,51 @@ import type { ChildConfig } from "./children";
 import type { Env } from "./env";
 
 /**
- * Code d'acces par enfant. Jusqu'ici la page d'un enfant n'etait protegee que
- * par son lien non-devinable : quiconque avait le lien (capture d'ecran,
- * historique d'un ordinateur partage, copain a qui l'ecran est montre) voyait
- * tout. Il faut desormais connaitre le lien ET le code.
+ * Code d'acces a 5 chiffres, partage par les pages enfant et par la page du
+ * prof de maison. Les deux ont le meme besoin : un lien non-devinable ne
+ * suffit pas, parce qu'un lien se partage, se capture et traine dans un
+ * historique.
  *
- * Le code n'est jamais stocke en clair : seul un derive PBKDF2 l'est. Changer
- * le code change ce derive, ce qui deconnecte du meme coup tous les appareils.
+ * Le code n'est jamais stocke en clair, seul un derive PBKDF2 l'est. Le
+ * changer change ce derive, ce qui deconnecte du meme coup tous les appareils.
  */
 
-const PIN_LENGTH = 5;
 const PIN_PATTERN = /^\d{5}$/;
 const PBKDF2_ITERATIONS = 100_000;
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 180;
-const SESSION_COOKIE = "child_session";
+const SESSION_COOKIE = "access_session";
 
-export const CHILD_PIN_LENGTH = PIN_LENGTH;
+export const PIN_LENGTH = 5;
+
+export interface PinScope {
+  /** Cle KV du code, ex. "child-pin:<slug>". */
+  storageKey: string;
+  /** Chemin auquel le cookie est limite : le cookie de l'un n'ouvre pas la page de l'autre. */
+  cookiePath: string;
+  /** Cle utilisee par le compteur d'essais (voir loginAttempts.ts). */
+  attemptsScope: string;
+}
+
+export function childPinScope(child: ChildConfig): PinScope {
+  return {
+    storageKey: `child-pin:${child.slug}`,
+    cookiePath: `/enfant/${child.slug}`,
+    attemptsScope: `child:${child.slug}`
+  };
+}
+
+export function tutorPinScope(child: ChildConfig): PinScope {
+  return {
+    storageKey: `tutor-pin:${child.tutorSlug}`,
+    cookiePath: `/prof/${child.tutorSlug}`,
+    attemptsScope: `tutor:${child.tutorSlug}`
+  };
+}
 
 interface StoredPin {
   saltHex: string;
   hashHex: string;
   iterations: number;
-}
-
-function pinKey(child: ChildConfig): string {
-  return `child-pin:${child.slug}`;
 }
 
 export function isValidPinFormat(value: unknown): value is string {
@@ -60,29 +80,29 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-export async function setChildPin(env: Env, child: ChildConfig, pin: string): Promise<void> {
+export async function setPin(env: Env, scope: PinScope, pin: string): Promise<void> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const stored: StoredPin = {
     saltHex: toHex(salt.buffer as ArrayBuffer),
     hashHex: await derive(pin, salt, PBKDF2_ITERATIONS),
     iterations: PBKDF2_ITERATIONS
   };
-  await env.PRONOTE_CACHE.put(pinKey(child), JSON.stringify(stored));
+  await env.PRONOTE_CACHE.put(scope.storageKey, JSON.stringify(stored));
 }
 
-export async function hasChildPin(env: Env, child: ChildConfig): Promise<boolean> {
-  return (await env.PRONOTE_CACHE.get(pinKey(child))) !== null;
+export async function hasPin(env: Env, scope: PinScope): Promise<boolean> {
+  return (await env.PRONOTE_CACHE.get(scope.storageKey)) !== null;
 }
 
-async function readStoredPin(env: Env, child: ChildConfig): Promise<StoredPin | null> {
-  const stored = (await env.PRONOTE_CACHE.get(pinKey(child), "json")) as StoredPin | null;
+async function readStoredPin(env: Env, scope: PinScope): Promise<StoredPin | null> {
+  const stored = (await env.PRONOTE_CACHE.get(scope.storageKey, "json")) as StoredPin | null;
   if (!stored || typeof stored.saltHex !== "string" || typeof stored.hashHex !== "string") return null;
   return stored;
 }
 
 /** Retourne le jeton de session a poser en cookie, ou null si le code est faux. */
-export async function verifyChildPin(env: Env, child: ChildConfig, pin: string): Promise<string | null> {
-  const stored = await readStoredPin(env, child);
+export async function verifyPin(env: Env, scope: PinScope, pin: string): Promise<string | null> {
+  const stored = await readStoredPin(env, scope);
   if (!stored) return null;
 
   const candidate = await derive(pin, fromHex(stored.saltHex), stored.iterations);
@@ -106,15 +126,15 @@ function readSessionCookie(request: Request): string | null {
   return null;
 }
 
-export type ChildAccess = "granted" | "pin-required" | "pin-not-configured";
+export type AccessState = "granted" | "pin-required" | "pin-not-configured";
 
 /**
  * Sans code configure, l'acces est refuse plutot que laisse ouvert : c'est
  * precisement la situation que le code doit corriger. Le parent voit
  * l'avertissement dans ses reglages et peut en definir un en une minute.
  */
-export async function checkChildAccess(request: Request, env: Env, child: ChildConfig): Promise<ChildAccess> {
-  const stored = await readStoredPin(env, child);
+export async function checkAccess(request: Request, env: Env, scope: PinScope): Promise<AccessState> {
+  const stored = await readStoredPin(env, scope);
   if (!stored) return "pin-not-configured";
 
   const session = readSessionCookie(request);
@@ -122,11 +142,9 @@ export async function checkChildAccess(request: Request, env: Env, child: ChildC
   return "pin-required";
 }
 
-export function childSessionCookie(child: ChildConfig, token: string): string {
-  // Portee limitee aux pages de cet enfant : le cookie de Malick n'est jamais
-  // envoye sur les pages de Codou.
+export function sessionCookie(scope: PinScope, token: string): string {
   return (
-    `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/enfant/${child.slug}; ` +
+    `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=${scope.cookiePath}; ` +
     `Max-Age=${SESSION_MAX_AGE_SECONDS}; HttpOnly; Secure; SameSite=Strict`
   );
 }

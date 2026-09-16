@@ -43,6 +43,17 @@ export interface ChildConfig {
    * toutes. A restreindre quand un enfant est trop jeune pour les suivre toutes.
    */
   prayerIds?: string[];
+  /**
+   * Segment d'URL de la page du prof de maison, ex. /prof/<tutorSlug>.
+   * Distinct du slug de l'enfant : ce lien sort de la famille, il ne doit pas
+   * donner acces a la page de l'enfant si quelqu'un tronque l'URL.
+   */
+  tutorSlug: string;
+  /**
+   * Matieres suivies avec le prof de maison. Liste courte : c'est ce que le
+   * prof choisit dans son formulaire.
+   */
+  homeworkSubjects: string[];
 }
 
 // Le suffixe aleatoire de chaque slug est genere avec :
@@ -58,7 +69,9 @@ export const children: ChildConfig[] = [
     defaultAccentId: "turquoise",
     defaultAvatar: "⚽",
     // Foot et manga.
-    avatars: ["⚽", "🏆", "👟", "🥅", "🧤", "🥇", "🍥", "🐉", "🗡️", "🥷", "🔥", "🍜"]
+    avatars: ["⚽", "🏆", "👟", "🥅", "🧤", "🥇", "🍥", "🐉", "🗡️", "🥷", "🔥", "🍜"],
+    tutorSlug: "malick-9PgS5sSs4qt-",
+    homeworkSubjects: ["Mathematiques", "Anglais"]
   },
   {
     slug: "codou-tBCiBx5FYmTB",
@@ -69,10 +82,16 @@ export const children: ChildConfig[] = [
     defaultAccentId: "corail",
     defaultAvatar: "🎤",
     // K-pop.
-    avatars: ["🎤", "🎧", "💜", "🩷", "🎀", "💃", "🦋", "✨", "🧋", "🐰", "🎶", "⭐"]
+    avatars: ["🎤", "🎧", "💜", "🩷", "🎀", "💃", "🦋", "✨", "🧋", "🐰", "🎶", "⭐"],
+    tutorSlug: "codou-qLQcKaT-E5cM",
+    homeworkSubjects: ["Francais"]
   }
 ];
 
 export function findChildBySlug(slug: string): ChildConfig | undefined {
   return children.find((child) => child.slug === slug);
+}
+
+export function findChildByTutorSlug(slug: string): ChildConfig | undefined {
+  return children.find((child) => child.tutorSlug === slug);
 }

@@ -46,8 +46,7 @@ const NAV_ITEMS: NavItem[] = [
     id: "devoir-maison",
     href: "/parent/devoir-maison",
     label: "Devoir maison",
-    icon: `<svg ${ICON}><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 00-4 12.7c.6.5 1 1.2 1 2.05V17h6v-.25c0-.85.4-1.55 1-2.05A7 7 0 0012 2z"/></svg>`,
-    soon: true
+    icon: `<svg ${ICON}><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 00-4 12.7c.6.5 1 1.2 1 2.05V17h6v-.25c0-.85.4-1.55 1-2.05A7 7 0 0012 2z"/></svg>`
   },
   {
     id: "reglages",
@@ -319,6 +318,29 @@ const PARENT_STYLE = `
     background: var(--accent); color: #fff;
     border: none; border-radius: 8px; cursor: pointer;
   }
+
+  /* --- Devoir maison --- */
+  .dm-card { display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px; }
+  .dm-exercise {
+    font: inherit; font-size: 13px; line-height: 1.6;
+    flex: 1; min-height: 140px; resize: vertical;
+    padding: 14px; border-radius: 8px;
+    background: var(--surface-alt); border: 1px solid var(--border); color: var(--text);
+  }
+  .dm-actions { display: flex; gap: 10px; margin-top: 14px; justify-content: flex-end; flex-wrap: wrap; }
+  .ghost-button {
+    font: inherit; font-size: 12.5px; font-weight: 600;
+    min-height: 40px; padding: 9px 16px;
+    background: transparent; color: var(--text-secondary);
+    border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+  }
+  .ghost-button:disabled, .save-button:disabled { opacity: .5; cursor: default; }
+  .dm-applied {
+    background: var(--surface-alt); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 18px; margin-bottom: 10px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+  @media (max-width: 900px) { .dm-card { grid-template-columns: 1fr; } }
 
   .pin-set-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .pin-set-form input {

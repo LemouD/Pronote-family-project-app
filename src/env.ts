@@ -3,6 +3,8 @@ import type { ChildConfig } from "./children";
 export interface Env {
   PRONOTE_CACHE: KVNamespace;
   PARENT_ACCESS_TOKEN?: string;
+  /** Cle dediee a ce projet (voir src/gemini.ts) : npx wrangler secret put GEMINI_API_KEY */
+  GEMINI_API_KEY?: string;
   [secretKey: string]: unknown;
 }
 

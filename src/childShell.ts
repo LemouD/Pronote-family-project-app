@@ -9,7 +9,7 @@ import { accentVars, type AccentPreset, type ChildPreferences, themeAttribute } 
  * cocher - l'oppose de l'espace parent (parentShell.ts).
  */
 
-export type ChildSectionId = "devoirs" | "prieres";
+export type ChildSectionId = "devoirs" | "devoir-maison" | "prieres";
 
 const ICON = `viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"`;
 
@@ -19,6 +19,12 @@ const TABS: { id: ChildSectionId; label: string; path: string; icon: string }[] 
     label: "Aujourd'hui",
     path: "",
     icon: `<svg ${ICON}><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>`
+  },
+  {
+    id: "devoir-maison",
+    label: "Devoir maison",
+    path: "/devoir-maison",
+    icon: `<svg ${ICON}><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 00-4 12.7c.6.5 1 1.2 1 2.05V17h6v-.25c0-.85.4-1.55 1-2.05A7 7 0 0012 2z"/></svg>`
   },
   {
     id: "prieres",

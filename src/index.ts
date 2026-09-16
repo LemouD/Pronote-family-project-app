@@ -1,8 +1,23 @@
-import { children, findChildBySlug, type ChildConfig } from "./children";
+import { children, findChildBySlug, findChildByTutorSlug, type ChildConfig } from "./children";
 import { addCustomTask, isCustomTaskId, listCustomTasks, setCustomTaskStatus, validateNewCustomTask } from "./customTasks";
 import { mergeForDisplay } from "./displayItems";
 import type { Env } from "./env";
-import { checkChildAccess, childSessionCookie, hasChildPin, isValidPinFormat, setChildPin, verifyChildPin } from "./childAuth";
+import { checkAccess, childPinScope, hasPin, isValidPinFormat, type PinScope, sessionCookie, setPin, tutorPinScope, verifyPin } from "./pinAuth";
+import { generateExercise } from "./gemini";
+import {
+  addNote,
+  applyProposal,
+  findNote,
+  isAppliedExerciseId,
+  listApplied,
+  listNotes,
+  listProposals,
+  removeProposal,
+  saveProposal,
+  setAppliedStatus,
+  validateTutorNote
+} from "./homeTutoring";
+import { renderTutorLogin, renderTutorPage, renderTutorPinMissing } from "./tutorPage";
 import { checkAttempts, clearAttempts, recordFailure } from "./loginAttempts";
 import { exchangeTokenForSession, isParentAuthorized } from "./parentAuth";
 import {
@@ -11,13 +26,14 @@ import {
   type DevoirsFilters,
   OVERVIEW_SUBTITLE,
   type ParentChildData,
-  renderComingSoon,
   renderDevoirs,
   renderDevoirsToolbar,
   renderForbidden,
+  renderDevoirMaison,
   renderNotes,
   renderOverview,
-  renderReglages
+  renderReglages,
+  type TutoringView
 } from "./parentSections";
 import { renderParentShell, type ParentSectionId } from "./parentShell";
 import type { ChildContext } from "./childShell";
@@ -41,7 +57,14 @@ import {
 } from "./preferences";
 import { getExternalSyncStatus, getHomework, type HomeworkItem, setHomeworkStatus } from "./pronote";
 import { PWA_ASSET_PATHS, serveIcon, serveManifest, serveServiceWorker } from "./pwa";
-import { renderChildHomework, renderChildLogin, renderChildPinMissing, renderChildPrayers, renderChildSettings } from "./render";
+import {
+  renderChildHomework,
+  renderChildLogin,
+  renderChildPinMissing,
+  renderChildPrayers,
+  renderChildSettings,
+  renderChildTutoring
+} from "./render";
 
 // Contenu 100% genere cote serveur, pas de ressources externes : une CSP
 // stricte (pas de scripts/objets tiers) reste compatible avec le <script>/
@@ -100,21 +123,51 @@ async function childContext(env: Env, child: ChildConfig): Promise<ChildContext>
   return { child, prefs, accent: findAccent(prefs.accentId) };
 }
 
+/**
+ * Verifie un code soumis, avec plafond d'essais. Partage par la page enfant et
+ * celle du prof : meme mecanique, seule la portee change.
+ */
+async function submitPin(
+  request: Request,
+  env: Env,
+  scope: PinScope,
+  onFailure: (message: string, status: number) => Response,
+  onSuccess: (cookie: string) => Response
+): Promise<Response> {
+  const attempts = await checkAttempts(env, scope.attemptsScope);
+  if (!attempts.allowed) {
+    return onFailure(`Trop d'essais. Reessaie dans ${Math.ceil(attempts.retryInSeconds / 60)} minutes.`, 429);
+  }
+
+  const form = await request.formData();
+  const pin = form.get("pin");
+  const token = isValidPinFormat(pin) ? await verifyPin(env, scope, pin) : null;
+
+  if (token === null) {
+    await recordFailure(env, scope.attemptsScope);
+    return onFailure("Code incorrect.", 401);
+  }
+
+  await clearAttempts(env, scope.attemptsScope);
+  return onSuccess(sessionCookie(scope, token));
+}
+
 async function loadParentData(env: Env): Promise<ParentChildData[]> {
   const today = todayInParis();
 
   return Promise.all(
     children.map(async (child) => {
-      const [{ items: homework, error }, customTasks, sync, prayers, prefs, hasPin] = await Promise.all([
+      const [{ items: homework, error }, customTasks, sync, prayers, prefs, pinConfigured, tutorPinConfigured] = await Promise.all([
         getHomeworkSafe(env, child),
         listCustomTasks(env, child),
         getExternalSyncStatus(env, child),
         getPrayerProgress(env, child, today),
         getChildPreferences(env, child),
-        hasChildPin(env, child)
+        hasPin(env, childPinScope(child)),
+        hasPin(env, tutorPinScope(child))
       ]);
       const items = await annotateNewlyDone(env, child, mergeForDisplay(homework, customTasks));
-      return { child, items, error, sync, prayers, accent: findAccent(prefs.accentId), hasPin };
+      return { child, items, error, sync, prayers, accent: findAccent(prefs.accentId), hasPin: pinConfigured, hasTutorPin: tutorPinConfigured };
     })
   );
 }
@@ -148,6 +201,37 @@ const PARENT_PAGES = new Map<string, ParentPage>([
   ["/parent/reglages", { section: "reglages", title: "Reglages", subtitle: "Configuration des enfants et installation de l'application." }]
 ]);
 
+async function loadTutoring(env: Env): Promise<TutoringView[]> {
+  return Promise.all(
+    children.map(async (child) => {
+      const [notes, proposals, applied, prefs] = await Promise.all([
+        listNotes(env, child),
+        listProposals(env, child),
+        listApplied(env, child),
+        getChildPreferences(env, child)
+      ]);
+
+      const proposedNoteIds = new Set(proposals.map((proposal) => proposal.noteId));
+      return {
+        child,
+        accent: findAccent(prefs.accentId),
+        pendingNotes: notes.filter((note) => !proposedNoteIds.has(note.id)),
+        proposals: proposals.map((proposal) => ({ proposal, note: notes.find((note) => note.id === proposal.noteId) })),
+        applied
+      };
+    })
+  );
+}
+
+/**
+ * Messages d'erreur indexes par code : la redirection ne transporte qu'un
+ * identifiant, jamais un texte, pour ne rien refleter d'arbitraire dans la page.
+ */
+const TUTORING_ERRORS: Record<string, string> = {
+  generation: "La generation a echoue. Reessaie, ou verifie la cle GEMINI_API_KEY.",
+  introuvable: "Cette proposition n'existe plus : elle a peut-etre deja ete traitee."
+};
+
 async function loadGrades(env: Env): Promise<ChildGrades[]> {
   return Promise.all(
     children.map(async (child) => {
@@ -178,16 +262,19 @@ async function renderParentPage(page: ParentPage, env: Env, url: URL, prefs: Par
   }
 
   if (page.section === "devoir-maison") {
+    const views = await loadTutoring(env);
+    const errorCode = url.searchParams.get("erreur");
     return html(
       renderParentShell({
         prefs,
         active: "devoir-maison",
         title: page.title,
         subtitle: page.subtitle,
-        body: renderComingSoon(
-          "Pas encore disponible",
-          "Le prof de maison notera ici ce qui a ete travaille, et tu pourras valider les exercices proposes avant qu'ils arrivent chez l'enfant."
-        )
+        pendingReviews: views.reduce((total, view) => total + view.pendingNotes.length + view.proposals.length, 0),
+        body: renderDevoirMaison(views, {
+          error: errorCode ? TUTORING_ERRORS[errorCode] : undefined,
+          aiConfigured: typeof env.GEMINI_API_KEY === "string" && env.GEMINI_API_KEY.length > 0
+        })
       })
     );
   }
@@ -236,6 +323,63 @@ export default {
       return html("<p>Voir /enfant/&lt;slug&gt; ou /parent.</p>");
     }
 
+    // Page du prof de maison. Protegee par un code, comme les pages enfant :
+    // ce lien sort de la famille, il ne peut pas reposer sur sa seule
+    // non-devinabilite.
+    const tutorMatch = path.match(/^\/prof\/([^/]+)(\/[^?]*)?$/);
+    if (tutorMatch) {
+      const child = findChildByTutorSlug(tutorMatch[1]);
+      if (!child) return html("Page introuvable.", 404);
+      const sub = tutorMatch[2] ?? "";
+      const scope = tutorPinScope(child);
+
+      if (sub === "/code" && request.method === "POST") {
+        return submitPin(
+          request,
+          env,
+          scope,
+          (message, status) => html(renderTutorLogin(child, { error: message }), status),
+          (cookie) =>
+            new Response(null, {
+              status: 303,
+              headers: { location: `/prof/${child.tutorSlug}`, "set-cookie": cookie, ...NO_STORE }
+            })
+        );
+      }
+
+      const access = await checkAccess(request, env, scope);
+      if (access !== "granted") {
+        return access === "pin-not-configured"
+          ? html(renderTutorPinMissing(child), 403)
+          : html(renderTutorLogin(child), 401);
+      }
+
+      if (sub === "" && request.method === "GET") {
+        return html(renderTutorPage(child, await listNotes(env, child), { saved: url.searchParams.has("ok") }));
+      }
+
+      if (sub === "" && request.method === "POST") {
+        const form = await request.formData();
+        const input = validateTutorNote(child, {
+          subject: form.get("subject"),
+          done: form.get("done"),
+          difficulty: form.get("difficulty")
+        });
+        if (!input) return html(renderTutorPage(child, await listNotes(env, child)), 400);
+
+        try {
+          await addNote(env, child, input);
+        } catch (error) {
+          console.error(`addNote(${child.slug}) failed:`, error);
+          return html("Impossible d'enregistrer la seance, reessayez.", 500);
+        }
+
+        return new Response(null, { status: 303, headers: { location: `/prof/${child.tutorSlug}?ok`, ...NO_STORE } });
+      }
+
+      return html("Page introuvable.", 404);
+    }
+
     // Tout /enfant/<slug>/... passe par ce point unique : le controle d'acces
     // est fait une seule fois, ce qui evite d'oublier une route en ajoutant
     // une page plus tard.
@@ -247,31 +391,18 @@ export default {
 
       // Seule route ouverte : la soumission du code lui-meme.
       if (sub === "/code" && request.method === "POST") {
-        const scope = `child:${child.slug}`;
-        const attempts = await checkAttempts(env, scope);
-        if (!attempts.allowed) {
-          return html(
-            renderChildLogin(await childContext(env, child), {
-              error: `Trop d'essais. Reessaie dans ${Math.ceil(attempts.retryInSeconds / 60)} minutes.`
-            }),
-            429
-          );
-        }
-
-        const form = await request.formData();
-        const pin = form.get("pin");
-        const token = isValidPinFormat(pin) ? await verifyChildPin(env, child, pin) : null;
-
-        if (token === null) {
-          await recordFailure(env, scope);
-          return html(renderChildLogin(await childContext(env, child), { error: "Code incorrect." }), 401);
-        }
-
-        await clearAttempts(env, scope);
-        return new Response(null, {
-          status: 303,
-          headers: { location: `/enfant/${child.slug}`, "set-cookie": childSessionCookie(child, token), ...NO_STORE }
-        });
+        const context = await childContext(env, child);
+        return submitPin(
+          request,
+          env,
+          childPinScope(child),
+          (message, status) => html(renderChildLogin(context, { error: message }), status),
+          (cookie) =>
+            new Response(null, {
+              status: 303,
+              headers: { location: `/enfant/${child.slug}`, "set-cookie": cookie, ...NO_STORE }
+            })
+        );
       }
 
       // Ajout d'une tache perso par un parent, depuis son propre espace. Cette
@@ -300,10 +431,10 @@ export default {
         }
       }
 
-      const access = await checkChildAccess(request, env, child);
+      const access = await checkAccess(request, env, childPinScope(child));
       if (access !== "granted") {
         // Les endpoints appeles en fetch attendent du JSON, pas une page.
-        if (request.method === "POST" && (sub === "/toggle" || sub === "/prieres/toggle")) {
+        if (request.method === "POST" && sub.endsWith("/toggle")) {
           return json({ error: "locked" }, 401);
         }
         const context = await childContext(env, child);
@@ -319,6 +450,33 @@ export default {
           childContext(env, child)
         ]);
         return html(renderChildHomework(context, mergeForDisplay(homework, customTasks), error), error ? 500 : 200);
+      }
+
+      if (sub === "/devoir-maison" && request.method === "GET") {
+        const [context, exercises] = await Promise.all([childContext(env, child), listApplied(env, child)]);
+        return html(renderChildTutoring(context, exercises));
+      }
+
+      if (sub === "/devoir-maison/toggle" && request.method === "POST") {
+        let body: { id?: string; done?: boolean };
+        try {
+          body = await request.json();
+        } catch {
+          return json({ error: "invalid body" }, 400);
+        }
+
+        if (typeof body.id !== "string" || !isAppliedExerciseId(body.id) || typeof body.done !== "boolean") {
+          return json({ error: "id and done are required" }, 400);
+        }
+
+        try {
+          const found = await setAppliedStatus(env, child, body.id, body.done);
+          if (!found) return json({ error: "unknown exercise" }, 404);
+          return json({ ok: true });
+        } catch (error) {
+          console.error(`tutoringToggle(${child.slug}, ${body.id}) failed:`, error);
+          return json({ error: "Impossible d'enregistrer, reessaie." }, 500);
+        }
       }
 
       if (sub === "/prieres" && request.method === "GET") {
@@ -415,6 +573,67 @@ export default {
       if (asset) return asset;
     }
 
+    // Actions du devoir maison. La generation est declenchee ici, depuis
+    // l'espace authentifie : aucune requete non authentifiee ne peut couter
+    // un appel a l'API.
+    if (path.startsWith("/parent/devoir-maison/") && request.method === "POST") {
+      if (!isParentAuthorized(request, env)) {
+        return html(renderForbidden(Boolean(env.PARENT_ACCESS_TOKEN)), 403);
+      }
+
+      const form = await request.formData();
+      const child = findChildBySlug(String(form.get("childSlug") ?? ""));
+      if (!child) return html("Enfant inconnu.", 400);
+
+      const back = (errorCode?: string) =>
+        new Response(null, {
+          status: 303,
+          headers: { location: errorCode ? `/parent/devoir-maison?erreur=${errorCode}` : "/parent/devoir-maison", ...NO_STORE }
+        });
+
+      if (path === "/parent/devoir-maison/generer" || path === "/parent/devoir-maison/regenerer") {
+        // Regenerer part de la proposition affichee pour retrouver sa note ;
+        // generer part directement de la note.
+        let noteId = String(form.get("noteId") ?? "");
+        if (path === "/parent/devoir-maison/regenerer") {
+          const proposals = await listProposals(env, child);
+          const current = proposals.find((proposal) => proposal.id === String(form.get("proposalId") ?? ""));
+          if (!current) return back("introuvable");
+          noteId = current.noteId;
+        }
+
+        const note = await findNote(env, child, noteId);
+        if (!note) return back("introuvable");
+
+        try {
+          const exercise = await generateExercise(env, child, note);
+          await saveProposal(env, child, note, exercise);
+        } catch (error) {
+          console.error(`generateExercise(${child.slug}) failed:`, error);
+          return back("generation");
+        }
+        return back();
+      }
+
+      if (path === "/parent/devoir-maison/appliquer") {
+        const proposal = await removeProposal(env, child, String(form.get("proposalId") ?? ""));
+        if (!proposal) return back("introuvable");
+
+        const edited = form.get("exercise");
+        try {
+          // Le texte retenu est celui affiche au parent au moment du clic,
+          // donc sa version corrigee le cas echeant.
+          await applyProposal(env, child, proposal, typeof edited === "string" ? edited : proposal.exercise);
+        } catch (error) {
+          console.error(`applyProposal(${child.slug}) failed:`, error);
+          return back("generation");
+        }
+        return back();
+      }
+
+      return html("Page introuvable.", 404);
+    }
+
     if (path === "/parent/code" && request.method === "POST") {
       if (!isParentAuthorized(request, env)) {
         return html(renderForbidden(Boolean(env.PARENT_ACCESS_TOKEN)), 403);
@@ -427,13 +646,14 @@ export default {
         return html("Code invalide : il doit faire exactement 5 chiffres.", 400);
       }
 
+      const scope = form.get("scope") === "tutor" ? tutorPinScope(child) : childPinScope(child);
       try {
-        await setChildPin(env, child, pin);
-        // Un nouveau code invalide les sessions en cours : les appareils de
-        // l'enfant redemanderont le code.
-        await clearAttempts(env, `child:${child.slug}`);
+        await setPin(env, scope, pin);
+        // Un nouveau code invalide les sessions en cours : les appareils
+        // concernes redemanderont le code.
+        await clearAttempts(env, scope.attemptsScope);
       } catch (error) {
-        console.error(`setChildPin(${child.slug}) failed:`, error);
+        console.error(`setPin(${scope.storageKey}) failed:`, error);
         return html("Impossible d'enregistrer le code, reessaie.", 500);
       }
 
