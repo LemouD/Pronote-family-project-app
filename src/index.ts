@@ -32,6 +32,18 @@ import {
   setAppliedStatus,
   validateTutorNote
 } from "./homeTutoring";
+import {
+  addBlock,
+  getRoutine,
+  moveBlock,
+  nextBlock,
+  removeBlock,
+  resetRoutine,
+  type RoutineError,
+  startRoutine,
+  toView as routineToView,
+  validateBlock
+} from "./routine";
 import { renderTutorLogin, renderTutorPage, renderTutorPinMissing } from "./tutorPage";
 import { checkAttempts, clearAttempts, recordFailure } from "./loginAttempts";
 import { exchangeTokenForSession, isParentAuthorized } from "./parentAuth";
@@ -76,6 +88,7 @@ import {
   renderChildHomework,
   renderChildLogin,
   renderChildPinMissing,
+  renderChildRoutine,
   renderChildPrayers,
   renderChildSettings,
   renderChildExamPrep,
@@ -173,7 +186,20 @@ async function loadParentData(env: Env): Promise<ParentChildData[]> {
 
   return Promise.all(
     children.map(async (child) => {
-      const [{ items: homework, error }, customTasks, sync, prayers, prefs, pinConfigured, tutorPinConfigured, examCompleted, notes, proposals, grades] = await Promise.all([
+      const [
+        { items: homework, error },
+        customTasks,
+        sync,
+        prayers,
+        prefs,
+        pinConfigured,
+        tutorPinConfigured,
+        examCompleted,
+        notes,
+        proposals,
+        grades,
+        routine
+      ] = await Promise.all([
         getHomeworkSafe(env, child),
         listCustomTasks(env, child),
         getExternalSyncStatus(env, child),
@@ -186,7 +212,8 @@ async function loadParentData(env: Env): Promise<ParentChildData[]> {
         // seances non traitees, propositions non validees, dernieres notes.
         listNotes(env, child),
         listProposals(env, child),
-        getGrades(env, child)
+        getGrades(env, child),
+        getRoutine(env, child, today)
       ]);
       const items = await annotateNewlyDone(env, child, mergeForDisplay(homework, customTasks));
       const proposedNoteIds = new Set(proposals.map((proposal) => proposal.noteId));
@@ -201,7 +228,8 @@ async function loadParentData(env: Env): Promise<ParentChildData[]> {
         hasTutorPin: tutorPinConfigured,
         examCompleted,
         tutoringPending: notes.filter((note) => !proposedNoteIds.has(note.id)).length + proposals.length,
-        recentGrades: recentGrades(grades)
+        recentGrades: recentGrades(grades),
+        routine: routineToView(routine)
       };
     })
   );
@@ -262,6 +290,15 @@ async function loadTutoring(env: Env): Promise<TutoringView[]> {
  * Messages d'erreur indexes par code : la redirection ne transporte qu'un
  * identifiant, jamais un texte, pour ne rien refleter d'arbitraire dans la page.
  */
+/** Erreurs de "Mon temps", ecrites pour un enfant et pas pour un journal. */
+const ROUTINE_ERRORS: Record<RoutineError, string> = {
+  demarree: "Ta routine a deja commence : tu ne peux plus la modifier.",
+  invalide: "Il manque quelque chose, verifie ton bloc.",
+  "trop-de-blocs": "Ca fait beaucoup de blocs. Enleves-en un avant d'ajouter.",
+  "loisir-depasse": "Tu as atteint tes 30 minutes de loisir.",
+  introuvable: "Ce bloc n'existe plus."
+};
+
 const TUTORING_ERRORS: Record<string, string> = {
   surcharge: "Le service d'IA est momentanement sature. Reessaie dans quelques minutes.",
   generation: "La generation a echoue. Reessaie, ou verifie la cle GEMINI_API_KEY.",
@@ -573,6 +610,68 @@ export default {
 
           if (!updated) return showPage("Cet exercice n'existe plus.", 404);
           return new Response(null, { status: 303, headers: { location: `/enfant/${child.slug}/brevet`, ...NO_STORE } });
+        }
+
+        return html("Page introuvable.", 404);
+      }
+
+      if (sub.startsWith("/mon-temps")) {
+        const today = todayInParis();
+        const showPage = async (error?: string, status = 200) => {
+          const [context, routine] = await Promise.all([childContext(env, child), getRoutine(env, child, today)]);
+          return html(renderChildRoutine(context, routineToView(routine), error), status);
+        };
+
+        if (sub === "/mon-temps" && request.method === "GET") return showPage();
+
+        const done = () =>
+          new Response(null, { status: 303, headers: { location: `/enfant/${child.slug}/mon-temps`, ...NO_STORE } });
+
+        if (request.method === "POST") {
+          // Toutes ces actions renvoient le meme type d'erreur, traduit une
+          // seule fois : l'enfant lit une phrase, jamais un code.
+          const settle = (error: RoutineError | null) => (error ? showPage(ROUTINE_ERRORS[error], 400) : done());
+
+          // Ces trois-la n'ont pas de champ a lire. Les traiter avant d'ouvrir
+          // le corps de la requete evite de planter sur un POST sans
+          // Content-Type, qu'un formulaire n'envoie jamais mais qu'un client
+          // quelconque peut tres bien produire.
+          if (sub === "/mon-temps/demarrer") return settle(await startRoutine(env, child, today));
+          if (sub === "/mon-temps/continuer") return settle(await nextBlock(env, child, today));
+          if (sub === "/mon-temps/recommencer") {
+            await resetRoutine(env, child, today);
+            return done();
+          }
+
+          // Meme raison : un corps illisible se solde par un message, pas par
+          // une erreur 500.
+          let form: FormData;
+          try {
+            form = await request.formData();
+          } catch {
+            return showPage(ROUTINE_ERRORS.invalide, 400);
+          }
+
+          if (sub === "/mon-temps/ajouter") {
+            const block = validateBlock({
+              kind: form.get("kind"),
+              label: form.get("label"),
+              minutes: form.get("minutes")
+            });
+            if (!block) return showPage(ROUTINE_ERRORS.invalide, 400);
+            return settle(await addBlock(env, child, today, block));
+          }
+
+          if (sub === "/mon-temps/retirer") {
+            return settle(await removeBlock(env, child, today, String(form.get("blockId") ?? "")));
+          }
+
+          if (sub === "/mon-temps/deplacer") {
+            const direction = form.get("direction");
+            if (direction !== "up" && direction !== "down") return showPage(ROUTINE_ERRORS.invalide, 400);
+            return settle(await moveBlock(env, child, today, String(form.get("blockId") ?? ""), direction));
+          }
+
         }
 
         return html("Page introuvable.", 404);

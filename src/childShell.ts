@@ -2,6 +2,8 @@ import type { ChildConfig } from "./children";
 import { fontFace, FONTS } from "./fonts";
 import { escapeHtml } from "./html";
 import { accentVars, type AccentPreset, type ChildPreferences, themeAttribute } from "./preferences";
+import { ROUTINE_LABEL } from "./routine";
+import { SIGNAL_BANNER, SIGNAL_SCRIPT, SIGNAL_STYLE } from "./signal";
 
 /**
  * Coquille de l'espace enfant : fond creme, coins ronds, gros reperes
@@ -9,7 +11,7 @@ import { accentVars, type AccentPreset, type ChildPreferences, themeAttribute } 
  * cocher - l'oppose de l'espace parent (parentShell.ts).
  */
 
-export type ChildSectionId = "devoirs" | "devoir-maison" | "prieres" | "brevet" | "reglages";
+export type ChildSectionId = "devoirs" | "devoir-maison" | "prieres" | "mon-temps" | "brevet" | "reglages";
 
 const ICON = `viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"`;
 
@@ -37,6 +39,12 @@ const MENU: { id: ChildSectionId; label: string; path: string; icon: string; res
     icon: `<svg ${ICON}><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>`
   },
   {
+    id: "mon-temps",
+    label: ROUTINE_LABEL,
+    path: "/mon-temps",
+    icon: `<svg ${ICON}><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5"/><path d="M9 2h6"/></svg>`
+  },
+  {
     id: "brevet",
     label: "Brevet",
     path: "/brevet",
@@ -61,6 +69,11 @@ const CHILD_LIGHT_TOKENS = `
     --accent-soft: var(--accent-soft-light);
     --error-bg: #FDE2E1;
     --error-text: #8A1F1F;
+    /* Une couleur par type de bloc de "Mon temps". Revisions prend la couleur
+       de l'enfant : c'est la partie qui lui appartient vraiment. */
+    --kind-revisions: var(--accent);
+    --kind-pause: #3F8FA8;
+    --kind-loisir: #C9752A;
 `;
 
 const CHILD_DARK_TOKENS = `
@@ -73,6 +86,9 @@ const CHILD_DARK_TOKENS = `
     --accent-soft: var(--accent-soft-dark);
     --error-bg: #4A1E1D;
     --error-text: #FFC9C7;
+    --kind-revisions: var(--accent);
+    --kind-pause: #7FC4DC;
+    --kind-loisir: #F0A868;
 `;
 
 const CHILD_STYLE = `
@@ -290,6 +306,86 @@ const CHILD_STYLE = `
   .menu-panel a svg { width: 22px; height: 22px; flex-shrink: 0; color: var(--text-secondary); }
   .menu-panel a.active { background: var(--accent-soft); color: var(--accent); }
   .menu-panel a.active svg { color: var(--accent); }
+
+  /* --- Mon temps --- */
+
+  .meters { display: flex; flex-direction: column; gap: 12px; margin: 0 24px 6px; }
+  .meter-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 13.5px; font-weight: 800; }
+  .meter-row .muted { color: var(--text-secondary); font-weight: 700; }
+  .gauge { height: 10px; border-radius: 999px; background: var(--border); overflow: hidden; margin-top: 6px; }
+  .gauge div { height: 100%; background: var(--kind-loisir); border-radius: 999px; }
+  .gauge.full div { background: var(--error-text); }
+
+  .block {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface); border: 2px solid var(--border);
+    border-left: 6px solid var(--kind); border-radius: 18px;
+    padding: 12px 14px;
+  }
+  .block-body { flex: 1; min-width: 0; }
+  .block-kind { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--kind); }
+  .block-label { font-size: 16px; font-weight: 800; overflow-wrap: anywhere; }
+  .block-time { font-size: 15px; font-weight: 800; color: var(--text-secondary); white-space: nowrap; }
+  .block.done { opacity: .55; }
+  .block.current { border-color: var(--kind); }
+  .block-tools { display: flex; gap: 6px; }
+  .block-tools button {
+    font: inherit; width: 36px; height: 36px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; color: var(--text-secondary);
+    border: 2px solid var(--border); border-radius: 12px; cursor: pointer;
+  }
+  .block-tools button svg { width: 16px; height: 16px; }
+  .block-tools button:disabled { opacity: .35; cursor: default; }
+
+  .add-block { background: var(--surface); border: 2px solid var(--border); border-radius: 20px; padding: 16px; }
+  .kind-choice { display: flex; gap: 8px; margin-bottom: 12px; }
+  .kind-choice label {
+    flex: 1; position: relative; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 46px; padding: 8px 4px;
+    border: 2px solid var(--border); border-radius: 14px;
+    font-size: 14px; font-weight: 800; color: var(--text-secondary);
+    text-align: center;
+  }
+  .kind-choice input { position: absolute; opacity: 0; pointer-events: none; }
+  /* Selection sans JavaScript : la bordure suit la case reellement cochee. */
+  .kind-choice label:has(input:checked) { border-color: var(--kind); color: var(--kind); background: var(--surface); }
+  .kind-choice label:has(input:disabled) { opacity: .4; cursor: default; }
+  .add-block input[type="text"], .add-block select {
+    font: inherit; font-size: 16px; font-weight: 700;
+    width: 100%; min-height: 48px; padding: 10px 12px; margin-bottom: 10px;
+    background: var(--bg); color: var(--text);
+    border: 2px solid var(--border); border-radius: 14px;
+  }
+  .add-block button, .routine-actions button {
+    font: inherit; font-size: 16px; font-weight: 800;
+    width: 100%; min-height: 52px;
+    background: var(--accent); color: #fff;
+    border: none; border-radius: 16px; cursor: pointer;
+  }
+  .add-block button:disabled { opacity: .5; cursor: default; }
+  .routine-actions { display: flex; flex-direction: column; gap: 10px; }
+  .routine-ghost {
+    background: transparent !important; color: var(--text-secondary) !important;
+    border: 2px solid var(--border) !important;
+  }
+
+  .timer {
+    background: var(--surface); border: 3px solid var(--kind);
+    border-radius: 26px; padding: 24px; text-align: center;
+  }
+  .timer-kind { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--kind); }
+  .timer-label { font-family: 'Baloo 2', system-ui, sans-serif; font-size: 24px; font-weight: 800; margin: 4px 0 10px; overflow-wrap: anywhere; }
+  .timer-count { font-family: 'Baloo 2', system-ui, sans-serif; font-size: 62px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; color: var(--kind); }
+  .timer-count.over { color: var(--error-text); }
+  .timer-next { font-size: 14px; font-weight: 700; color: var(--text-secondary); margin-top: 14px; }
+  .timer-done-note { font-size: 15px; font-weight: 800; color: var(--kind-loisir); margin-top: 14px; }
+
+  .routine-end { text-align: center; padding: 10px 0 4px; }
+  .routine-end .big { font-family: 'Baloo 2', system-ui, sans-serif; font-size: 30px; font-weight: 800; margin-bottom: 6px; }
+
+${SIGNAL_STYLE}
 `;
 
 /**
@@ -382,6 +478,8 @@ export function renderChildShell(options: {
   error?: string;
   /** Remplace la barre d'onglets (bouton d'enregistrement des reglages). */
   footer?: string;
+  /** Script propre a la page, joue apres celui du signal. */
+  script?: string;
 }): string {
   const { child, prefs, accent } = options.context;
 
@@ -416,7 +514,10 @@ export function renderChildShell(options: {
     <div class="list">${options.body}</div>
     ${options.footer ?? ""}
   </div>
+  ${SIGNAL_BANNER}
   <script>${TOGGLE_SCRIPT}</script>
+  <script>${SIGNAL_SCRIPT}</script>
+  ${options.script ? `<script>${options.script}</script>` : ""}
 </body>
 </html>`;
 }
