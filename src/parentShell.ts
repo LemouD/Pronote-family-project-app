@@ -335,6 +335,8 @@ const PARENT_STYLE = `
     border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
   }
   .ghost-button:disabled, .save-button:disabled { opacity: .5; cursor: default; }
+  /* Une action destructive se signale avant le clic, pas apres. */
+  .ghost-button.danger { color: var(--danger); border-color: var(--danger); }
   .dm-applied {
     background: var(--surface-alt); border: 1px solid var(--border); border-radius: 10px;
     padding: 14px 18px; margin-bottom: 10px;

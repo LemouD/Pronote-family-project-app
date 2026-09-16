@@ -13,6 +13,7 @@ import {
   listSessions,
   markExamSeen,
   newlyCompleted,
+  removeSession,
   revealCorrection,
   toView,
   validateChoice
@@ -25,6 +26,7 @@ import {
   listApplied,
   listNotes,
   listProposals,
+  removeApplied,
   removeProposal,
   saveProposal,
   setAppliedStatus,
@@ -551,6 +553,16 @@ export default {
           return new Response(null, { status: 303, headers: { location: `/enfant/${child.slug}/brevet`, ...NO_STORE } });
         }
 
+        if (sub === "/brevet/supprimer" && request.method === "POST") {
+          const form = await request.formData();
+          // removeSession refuse un exercice non termine : l'echec ici veut
+          // dire "deja supprime" ou "pas encore fini", jamais une suppression
+          // silencieuse d'un travail en cours.
+          const removed = await removeSession(env, child, String(form.get("sessionId") ?? ""));
+          if (!removed) return showPage("Cet exercice ne peut pas etre supprime.", 400);
+          return new Response(null, { status: 303, headers: { location: `/enfant/${child.slug}/brevet`, ...NO_STORE } });
+        }
+
         if ((sub === "/brevet/correction" || sub === "/brevet/valider") && request.method === "POST") {
           const form = await request.formData();
           const sessionId = String(form.get("sessionId") ?? "");
@@ -730,6 +742,18 @@ export default {
           return back(error instanceof GeminiError && error.transient ? "surcharge" : "generation");
         }
         return back();
+      }
+
+      // Supprimer une proposition = la sortir de la liste sans rien publier.
+      // La note du prof, elle, reste : elle n'appartient pas a cette action.
+      if (path === "/parent/devoir-maison/supprimer") {
+        const proposal = await removeProposal(env, child, String(form.get("proposalId") ?? ""));
+        return proposal ? back() : back("introuvable");
+      }
+
+      if (path === "/parent/devoir-maison/retirer") {
+        const removed = await removeApplied(env, child, String(form.get("appliedId") ?? ""));
+        return removed ? back() : back("introuvable");
       }
 
       if (path === "/parent/devoir-maison/appliquer") {

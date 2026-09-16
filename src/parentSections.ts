@@ -531,6 +531,7 @@ export function renderDevoirMaison(views: TutoringView[], options: { error?: str
               <input type="hidden" name="proposalId" value="${escapeHtml(proposal.id)}" />
               <textarea name="exercise" class="dm-exercise" maxlength="2000">${escapeHtml(proposal.exercise)}</textarea>
               <div class="dm-actions">
+                <button type="submit" formaction="/parent/devoir-maison/supprimer" class="ghost-button danger">Supprimer</button>
                 <button type="submit" formaction="/parent/devoir-maison/regenerer" class="ghost-button"${
                   options.aiConfigured ? "" : " disabled"
                 }>Regenerer</button>
@@ -550,7 +551,14 @@ export function renderDevoirMaison(views: TutoringView[], options: { error?: str
           <div style="font-size:13px;overflow-wrap:anywhere"><b>${escapeHtml(view.child.displayName)}</b> · ${escapeHtml(
             item.subject
           )} — ${escapeHtml(item.exercise.split("\n")[0].slice(0, 120))}</div>
-          <span class="badge ${item.done ? "badge-done" : "badge-todo"}">${item.done ? "Fait" : "A faire"}</span>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span class="badge ${item.done ? "badge-done" : "badge-todo"}">${item.done ? "Fait" : "A faire"}</span>
+            <form method="post" action="/parent/devoir-maison/retirer">
+              <input type="hidden" name="childSlug" value="${escapeHtml(view.child.slug)}" />
+              <input type="hidden" name="appliedId" value="${escapeHtml(item.id)}" />
+              <button type="submit" class="ghost-button danger">Retirer</button>
+            </form>
+          </div>
         </div>
       `
     )

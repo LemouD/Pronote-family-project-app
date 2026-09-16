@@ -189,8 +189,13 @@ export function renderChildExamPrep(
                      <div class="exam-text exam-correction">${escapeHtml(session.correction)}</div>`
               }
               ${
+                // Le bouton Supprimer ne remplace "J'ai termine" qu'une fois
+                // l'exercice fini : rien ne permet d'effacer un travail en cours.
                 session.done
-                  ? ""
+                  ? `<form method="post" action="${base}/supprimer" class="exam-actions">
+                       <input type="hidden" name="sessionId" value="${escapeHtml(session.id)}" />
+                       <button type="submit" class="exam-ghost exam-danger">Supprimer</button>
+                     </form>`
                   : `<form method="post" action="${base}/valider" class="exam-actions">
                        <input type="hidden" name="sessionId" value="${escapeHtml(session.id)}" />
                        <button type="submit">J'ai termine</button>
@@ -327,11 +332,11 @@ export function renderChildSettings(context: ChildContext): string {
 
   return renderChildShell({
     context,
-    active: null,
+    active: "reglages",
     title: "Mes reglages",
     subtitle: `Ton prenom (${child.displayName}) et tes devoirs ne changent pas.`,
     headIcon: GEAR_ICON,
-    body: `<a class="back-link" href="/enfant/${escapeHtml(child.slug)}">Retour</a>${body}`,
+    body,
     footer: `<div class="save-bar"><button type="submit" form="settings-form">Enregistrer</button></div>`,
     error: undefined
   });

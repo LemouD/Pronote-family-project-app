@@ -9,11 +9,15 @@ import { accentVars, type AccentPreset, type ChildPreferences, themeAttribute } 
  * cocher - l'oppose de l'espace parent (parentShell.ts).
  */
 
-export type ChildSectionId = "devoirs" | "devoir-maison" | "prieres" | "brevet";
+export type ChildSectionId = "devoirs" | "devoir-maison" | "prieres" | "brevet" | "reglages";
 
 const ICON = `viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"`;
 
-const TABS: { id: ChildSectionId; label: string; path: string; icon: string }[] = [
+/**
+ * Entrees du menu. "restricted" marque celles reservees a un enfant : elles
+ * n'apparaissent que dans son propre menu.
+ */
+const MENU: { id: ChildSectionId; label: string; path: string; icon: string; restricted?: boolean }[] = [
   {
     id: "devoirs",
     label: "Aujourd'hui",
@@ -36,7 +40,14 @@ const TABS: { id: ChildSectionId; label: string; path: string; icon: string }[] 
     id: "brevet",
     label: "Brevet",
     path: "/brevet",
-    icon: `<svg ${ICON}><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>`
+    icon: `<svg ${ICON}><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>`,
+    restricted: true
+  },
+  {
+    id: "reglages",
+    label: "Mes reglages",
+    path: "/reglages",
+    icon: `<svg ${ICON}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`
   }
 ];
 
@@ -229,6 +240,8 @@ const CHILD_STYLE = `
     background: transparent !important; color: var(--accent) !important;
     border: 2px solid var(--accent) !important;
   }
+  /* Une action destructive se signale avant le clic, pas apres. */
+  .exam-danger { color: var(--error-text) !important; border-color: var(--error-text) !important; }
   .exam-done { font-size: 11px; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .02em; }
 
   .pin-form { display: flex; flex-direction: column; gap: 14px; align-items: center; padding-top: 12px; }
@@ -247,25 +260,36 @@ const CHILD_STYLE = `
     border: none; border-radius: 18px;
     font: inherit; font-size: 17px; font-weight: 800; cursor: pointer;
   }
-  .back-link { display: inline-block; margin: 0 24px 14px; font-weight: 700; color: var(--accent); text-decoration: none; font-size: 14px; }
 
-  .tabs {
-    position: sticky; bottom: 0;
-    display: flex; gap: 8px;
-    padding: 12px 20px calc(22px + env(safe-area-inset-bottom));
+  /* Menu en tiroir. Bati sur <details> : il s'ouvre et se ferme sans une
+     ligne de JavaScript, donc rien a ajouter a la CSP, et il fonctionne meme
+     si un script echoue. Une barre d'onglets ne tenait plus a sept entrees. */
+  .menu {
+    position: sticky; top: 0; z-index: 20;
     background: var(--bg);
+    border-bottom: 2px solid var(--border);
   }
-  .tabs a {
-    flex: 1;
-    display: flex; flex-direction: column; align-items: center; gap: 4px;
-    padding: 8px; border-radius: 16px;
-    text-decoration: none;
-    color: var(--text-secondary);
+  .menu-button {
+    list-style: none; cursor: pointer;
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 24px;
+    font-family: 'Baloo 2', system-ui, sans-serif;
+    font-weight: 800; font-size: 17px;
   }
-  .tabs a svg { width: 20px; height: 20px; }
-  .tabs a span { font-size: 11px; font-weight: 800; text-align: center; line-height: 1.15; }
-  .tabs a { padding: 8px 4px; }
-  .tabs a.active { background: var(--accent-soft); color: var(--accent); }
+  .menu-button::-webkit-details-marker { display: none; }
+  .menu-button svg { width: 24px; height: 24px; color: var(--accent); flex-shrink: 0; }
+  .menu-button .chevron { margin-left: auto; width: 18px; height: 18px; color: var(--text-secondary); }
+  .menu[open] .chevron { transform: rotate(180deg); }
+  .menu-panel { display: flex; flex-direction: column; gap: 4px; padding: 0 16px 14px; }
+  .menu-panel a {
+    display: flex; align-items: center; gap: 14px;
+    min-height: 52px; padding: 10px 16px;
+    border-radius: 16px; text-decoration: none;
+    color: var(--text); font-size: 16px; font-weight: 700;
+  }
+  .menu-panel a svg { width: 22px; height: 22px; flex-shrink: 0; color: var(--text-secondary); }
+  .menu-panel a.active { background: var(--accent-soft); color: var(--accent); }
+  .menu-panel a.active svg { color: var(--accent); }
 `;
 
 /**
@@ -313,11 +337,31 @@ export function renderCheck(options: { id: string; toggleUrl: string; done: bool
   `;
 }
 
-function renderTabs(child: ChildConfig, active: ChildSectionId): string {
-  return TABS.filter((tab) => tab.id !== "brevet" || child.examPrep).map((tab) => {
-    const isActive = tab.id === active;
-    return `<a href="/enfant/${escapeHtml(child.slug)}${tab.path}"${isActive ? ' class="active" aria-current="page"' : ""}>${tab.icon}<span>${escapeHtml(tab.label)}</span></a>`;
-  }).join("");
+const BURGER = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>`;
+const CHEVRON = `<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+function visibleMenu(child: ChildConfig) {
+  // Une entree reservee n'apparait que chez l'enfant concerne : Codou ne doit
+  // pas voir le brevet, ni meme savoir qu'il existe.
+  return MENU.filter((entry) => !entry.restricted || child.examPrep);
+}
+
+function renderMenu(child: ChildConfig, active: ChildSectionId | null): string {
+  const current = visibleMenu(child).find((entry) => entry.id === active);
+
+  const links = visibleMenu(child)
+    .map((entry) => {
+      const isActive = entry.id === active;
+      return `<a href="/enfant/${escapeHtml(child.slug)}${entry.path}"${isActive ? ' class="active" aria-current="page"' : ""}>${entry.icon}<span>${escapeHtml(entry.label)}</span></a>`;
+    })
+    .join("");
+
+  return `
+    <details class="menu">
+      <summary class="menu-button">${BURGER}<span>${escapeHtml(current?.label ?? "Menu")}</span>${CHEVRON}</summary>
+      <nav class="menu-panel">${links}</nav>
+    </details>
+  `;
 }
 
 export interface ChildContext {
@@ -354,12 +398,13 @@ export function renderChildShell(options: {
 </head>
 <body>
   <div class="page">
+    ${options.active === null ? "" : renderMenu(child, options.active)}
     <div class="head">
       <div class="head-row">
         ${options.headIcon}
         <h1>${escapeHtml(options.title)}</h1>
         ${
-          options.active === null
+          options.active === null || options.active === "reglages"
             ? ""
             : `<a class="avatar-link" href="/enfant/${escapeHtml(child.slug)}/reglages" aria-label="Mes reglages">${escapeHtml(prefs.avatar)}</a>`
         }
@@ -369,7 +414,7 @@ export function renderChildShell(options: {
     ${options.error ? `<div class="error">${escapeHtml(options.error)}</div>` : ""}
     ${options.beforeList ?? ""}
     <div class="list">${options.body}</div>
-    ${options.footer ?? (options.active === null ? "" : `<nav class="tabs">${renderTabs(child, options.active)}</nav>`)}
+    ${options.footer ?? ""}
   </div>
   <script>${TOGGLE_SCRIPT}</script>
 </body>
