@@ -19,6 +19,11 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { existsSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const CONFIG_PATH = join(dirname(dirname(fileURLToPath(import.meta.url))), "familyo.config.json");
 
 /** Meme longueur que les slugs existants : 9 octets, soit 12 caracteres. */
 function secretSuffix() {
@@ -57,18 +62,35 @@ function parseChild(raw) {
 }
 
 function childEntry(child) {
-  return `  {
-    slug: "${child.slug}",
-    displayName: "${child.firstName}",
-    secretPrefix: "${child.secretPrefix}",
+  const entry = {
+    slug: child.slug,
+    displayName: child.firstName,
+    secretPrefix: child.secretPrefix,
     externallySynced: true,
-    schoolYear: "${child.schoolYear}",
-    defaultAccentId: "A CHOISIR (voir ACCENTS dans src/preferences.ts)",
+    schoolYear: child.schoolYear,
+    // A choisir dans ACCENTS (src/preferences.ts). "turquoise" tient lieu de
+    // valeur de depart : l'enfant la changera lui-meme depuis ses reglages.
+    defaultAccentId: "turquoise",
     defaultAvatar: "🙂",
-    avatars: ["🙂", "⭐", "🎧", "⚽", "🎮", "📚"],
-    tutorSlug: "${child.tutorSlug}",
-    homeworkSubjects: ["A COMPLETER"]${child.examPrep ? ',\n    examPrep: "brevet"' : ""}
-  }`;
+    avatars: ["🙂", "⭐", "🎧", "⚽", "🎮", "📚", "🎨", "🐱"],
+    tutorSlug: child.tutorSlug,
+    homeworkSubjects: []
+  };
+  if (child.examPrep) entry.examPrep = "brevet";
+  return entry;
+}
+
+function buildConfig(children) {
+  return {
+    _lisezMoi: [
+      "Configuration de cette installation de Familyo. Une famille, un deploiement.",
+      "Ce fichier est le seul a modifier pour installer l'application chez une autre famille.",
+      'Il est genere par : cd bootstrap && node nouvelle-famille.mjs --enfant "Prenom:Classe"',
+      "Les slugs sont des URL secretes : les regenerer si l'un d'eux venait a fuiter.",
+      "Aucun identifiant ne doit figurer ici - ils vivent dans les secrets Cloudflare et GitHub."
+    ],
+    enfants: children.map(childEntry)
+  };
 }
 
 function main() {
@@ -82,14 +104,28 @@ function main() {
 
   const children = raws.map(parseChild);
   const parentToken = randomBytes(24).toString("base64url");
+  const contents = `${JSON.stringify(buildConfig(children), null, 2)}\n`;
+  const write = args.includes("--ecrire");
 
   console.log("=".repeat(72));
-  console.log("1. A COLLER DANS src/children.ts");
-  console.log("=".repeat(72));
-  console.log("\nexport const children: ChildConfig[] = [");
-  console.log(children.map(childEntry).join(",\n"));
-  console.log("];\n");
-  console.log("Deux champs restent a remplir a la main :");
+  console.log("1. CONFIGURATION - familyo.config.json");
+  console.log("=".repeat(72) + "\n");
+
+  if (write) {
+    // On n'ecrase jamais une configuration existante sans le dire : ce fichier
+    // porte les liens secrets d'une famille deja installee.
+    if (existsSync(CONFIG_PATH) && !args.includes("--forcer")) {
+      console.error(`familyo.config.json existe deja. Relancer avec --forcer pour l'ecraser.\n`);
+      process.exit(1);
+    }
+    writeFileSync(CONFIG_PATH, contents);
+    console.log(`Ecrit dans ${CONFIG_PATH}\n`);
+  } else {
+    console.log(contents);
+    console.log("Relancer avec --ecrire pour enregistrer ce fichier directement.\n");
+  }
+
+  console.log("Deux champs restent a completer :");
   console.log("  - defaultAccentId : un identifiant de ACCENTS (src/preferences.ts)");
   console.log("  - homeworkSubjects : les matieres travaillees avec un prof particulier");
   console.log("    (le parent pourra les changer ensuite depuis ses Reglages)\n");

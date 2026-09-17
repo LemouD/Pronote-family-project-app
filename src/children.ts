@@ -1,13 +1,16 @@
+import config from "../familyo.config.json";
 import type { ExamId } from "./examPrep";
 
 /**
- * Liste des enfants suivis par l'appli. Pour ajouter un enfant (le sien ou
- * celui d'une autre famille qui reprend ce projet) :
- *   1. Ajouter une entree ici avec un slug non-devinable et un secretPrefix.
- *   2. Definir les secrets Cloudflare correspondants :
- *        npx wrangler secret put PRONOTE_<secretPrefix>_URL
- *        npx wrangler secret put PRONOTE_<secretPrefix>_USERNAME
- *        npx wrangler secret put PRONOTE_<secretPrefix>_PASSWORD
+ * Liste des enfants suivis par cette installation.
+ *
+ * Elle ne vit plus dans ce fichier mais dans familyo.config.json, a la racine :
+ * installer Familyo chez une autre famille ne demande plus de modifier du
+ * TypeScript, seulement d'editer un fichier de donnees - genere par
+ * bootstrap/nouvelle-famille.mjs. Voir INSTALLATION.md.
+ *
+ * Le JSON est embarque au moment du build : il n'y a pas de lecture de fichier
+ * a l'execution, et donc rien de plus a deployer.
  */
 export interface ChildConfig {
   /** Segment d'URL, ex. /enfant/<slug>. Doit etre long et non-devinable. */
@@ -63,38 +66,52 @@ export interface ChildConfig {
   examPrep?: ExamId;
 }
 
-// Le suffixe aleatoire de chaque slug est genere avec :
-//   node -e "console.log(require('crypto').randomBytes(9).toString('base64url'))"
-// A regenerer avec la meme commande si un slug venait a fuiter.
-export const children: ChildConfig[] = [
-  {
-    slug: "malick-K5p0nA65n8L1",
-    displayName: "Malick",
-    secretPrefix: "MALICK",
-    externallySynced: true,
-    schoolYear: "3e",
-    defaultAccentId: "turquoise",
-    defaultAvatar: "⚽",
-    // Foot et manga.
-    avatars: ["⚽", "🏆", "👟", "🥅", "🧤", "🥇", "🍥", "🐉", "🗡️", "🥷", "🔥", "🍜"],
-    tutorSlug: "malick-9PgS5sSs4qt-",
-    homeworkSubjects: ["Mathematiques", "Anglais"],
-    examPrep: "brevet"
-  },
-  {
-    slug: "codou-tBCiBx5FYmTB",
-    displayName: "Codou",
-    secretPrefix: "CODOU",
-    externallySynced: true,
-    schoolYear: "5e",
-    defaultAccentId: "corail",
-    defaultAvatar: "🎤",
-    // K-pop.
-    avatars: ["🎤", "🎧", "💜", "🩷", "🎀", "💃", "🦋", "✨", "🧋", "🐰", "🎶", "⭐"],
-    tutorSlug: "codou-qLQcKaT-E5cM",
-    homeworkSubjects: ["Francais"]
+const TEXT_FIELDS = ["slug", "displayName", "secretPrefix", "schoolYear", "defaultAccentId", "defaultAvatar", "tutorSlug"] as const;
+
+/**
+ * Relit le fichier de configuration.
+ *
+ * Une erreur ici arrete le Worker au demarrage, et c'est voulu : servir des
+ * pages avec un roster incomplet ferait apparaitre un enfant sans lien secret,
+ * ou deux enfants sur la meme adresse. Mieux vaut un echec franc, nomme, au
+ * moment de l'installation - c'est la seule fois ou ce fichier est edite.
+ */
+function readChildren(entries: unknown): ChildConfig[] {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    throw new Error('familyo.config.json : "enfants" doit etre une liste non vide.');
   }
-];
+
+  const children = entries.map((entry, index) => {
+    const raw = entry as Record<string, unknown>;
+    const where = `familyo.config.json, enfant ${index + 1}`;
+
+    for (const field of TEXT_FIELDS) {
+      if (typeof raw[field] !== "string" || (raw[field] as string).trim().length === 0) {
+        throw new Error(`${where} : le champ "${field}" est manquant ou vide.`);
+      }
+    }
+    if (!Array.isArray(raw.avatars) || raw.avatars.length === 0) {
+      throw new Error(`${where} : "avatars" doit contenir au moins un emoji.`);
+    }
+    if (!Array.isArray(raw.homeworkSubjects)) {
+      throw new Error(`${where} : "homeworkSubjects" doit etre une liste (eventuellement vide).`);
+    }
+
+    return raw as unknown as ChildConfig;
+  });
+
+  // Deux enfants sur la meme adresse, c'est l'un qui voit les devoirs de
+  // l'autre. Le cas est assez grave pour meriter sa propre verification.
+  const slugs = children.flatMap((child) => [child.slug, child.tutorSlug]);
+  const duplicate = slugs.find((slug, index) => slugs.indexOf(slug) !== index);
+  if (duplicate) {
+    throw new Error(`familyo.config.json : le lien "${duplicate}" est utilise deux fois.`);
+  }
+
+  return children;
+}
+
+export const children: ChildConfig[] = readChildren(config.enfants);
 
 export function findChildBySlug(slug: string): ChildConfig | undefined {
   return children.find((child) => child.slug === slug);

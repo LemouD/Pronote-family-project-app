@@ -38,23 +38,35 @@ version a proposer par defaut a une famille qui hesite.
 
 ## 1. Preparer la configuration
 
+Toute la configuration d'une installation tient dans **un seul fichier de
+donnees**, `familyo.config.json`, a la racine. Il n'y a pas de TypeScript a
+modifier.
+
 ```bash
 cd bootstrap
 node nouvelle-famille.mjs --enfant "Prenom:Classe" --enfant "Autre:3e:brevet"
 ```
 
+Par defaut le script **affiche** le fichier sans rien ecrire. Ajouter
+`--ecrire` pour l'enregistrer ; il refuse d'ecraser une configuration
+existante sans `--forcer`, parce que ce fichier porte les liens secrets d'une
+famille deja installee.
+
 Le script ne demande, ne lit et n'ecrit aucun identifiant, et ne se connecte a
-rien. Il tire au sort les liens secrets et imprime tout le reste : l'entree
-`children.ts` a coller, la liste des secrets, les commandes, et les liens a
-distribuer.
+rien. Il tire au sort les liens secrets et imprime le reste : la liste des
+secrets, les commandes, et les liens a distribuer.
 
 Ajouter `:brevet` en troisieme champ pour un enfant de 3e qui prepare le
 brevet : ca lui ouvre l'onglet correspondant.
 
-Deux champs restent a completer a la main dans `children.ts` :
-`defaultAccentId` (voir `ACCENTS` dans `src/preferences.ts`) et
-`homeworkSubjects`. Ce dernier n'est qu'une valeur de depart : le parent
-modifie ensuite ses matieres depuis ses Reglages.
+Deux champs restent a completer : `defaultAccentId` (voir `ACCENTS` dans
+`src/preferences.ts`) et `homeworkSubjects`. Ce dernier n'est qu'une valeur de
+depart : le parent modifie ensuite ses matieres depuis ses Reglages.
+
+**Le fichier est verifie au demarrage du Worker**, pas a la premiere visite :
+un champ obligatoire vide, ou deux enfants sur le meme lien, font echouer le
+demarrage avec un message qui nomme le probleme. Une configuration cassee ne
+peut donc pas etre deployee — le build echoue avant.
 
 ## 2. Deployer
 
