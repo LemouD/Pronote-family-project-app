@@ -138,7 +138,7 @@ const SECURITY_HEADERS = {
 // intermediaire), utile notamment sur une tablette partagee.
 const NO_STORE = { "cache-control": "private, no-store" };
 
-const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Devoirs">
+const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Familyo">
   <rect width="64" height="64" rx="14" fill="#2f6fed"/>
   <path d="M16 18h25a7 7 0 0 1 7 7v22H23a7 7 0 0 1-7-7V18Z" fill="#fff"/>
   <path d="M23 18v22a7 7 0 0 1 7 7h18" fill="none" stroke="#2f6fed" stroke-width="4"/>
