@@ -113,7 +113,15 @@ import {
   type Theme
 } from "./preferences";
 import { getExternalSyncStatus, getHomework, type HomeworkItem, setHomeworkStatus } from "./pronote";
-import { PWA_ASSET_PATHS, serveIcon, serveManifest, serveServiceWorker } from "./pwa";
+import {
+  CHILD_PWA_SUFFIX,
+  PWA_ASSET_PATHS,
+  serveChildManifest,
+  serveChildServiceWorker,
+  serveIcon,
+  serveManifest,
+  serveServiceWorker
+} from "./pwa";
 import {
   renderChildHomework,
   renderChildLogin,
@@ -636,6 +644,18 @@ async function route(request: Request, env: Env): Promise<Response> {
       const child = findChildBySlug(childMatch[1]);
       if (!child) return html("Page introuvable.", 404);
       const sub = childMatch[2] ?? "";
+
+      // Manifeste et service worker : servis avant le controle d'acces, comme
+      // ceux du parent. Le navigateur les telecharge sans cookies, donc les
+      // proteger par le code de l'enfant rendrait la page non installable.
+      // Ils ne disent rien de plus que le prenom, deja dans l'URL.
+      if (request.method === "GET" && sub === CHILD_PWA_SUFFIX.manifest) {
+        const prefs = await getChildPreferences(env, child);
+        return serveChildManifest(child, findAccent(prefs.accentId));
+      }
+      if (request.method === "GET" && sub === CHILD_PWA_SUFFIX.serviceWorker) {
+        return serveChildServiceWorker(child);
+      }
 
       // Seule route ouverte : la soumission du code lui-meme.
       if (sub === "/code" && request.method === "POST") {

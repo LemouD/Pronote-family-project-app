@@ -2,7 +2,7 @@ import { fontFace, FONTS } from "./fonts";
 import { escapeHtml } from "./html";
 import { APP_ICON_SVG } from "./logo";
 import { type ParentPreferences, themeAttribute } from "./preferences";
-import { PARENT_THEME_COLOR, PWA_ASSET_PATHS } from "./pwa";
+import { ICON_PATHS, PARENT_THEME_COLOR, PWA_ASSET_PATHS } from "./pwa";
 
 /**
  * Coquille de l'espace parent : navigation laterale claire, accent indigo,
@@ -67,6 +67,7 @@ const PARENT_LIGHT_TOKENS = `
     --accent: #1B5E4F;
     --accent-soft: #E7F3EB;
     --accent-text: #14563F;
+    --coral: #F17360;
     --success: #16A34A;
     --success-soft: #DCFCE7;
     --warning: #D9761F;
@@ -74,6 +75,16 @@ const PARENT_LIGHT_TOKENS = `
     --danger: #DC2626;
     --danger-soft: #FDE8E8;
     --shadow-chip: 0 1px 2px rgba(0,0,0,.06);
+    --shadow-card: 0 1px 2px rgba(16,24,40,.04), 0 10px 26px -14px rgba(16,24,40,.16);
+    /* La barre laterale a ses propres jetons : elle est vert fonce dans les
+       deux themes, donc elle ne peut pas suivre --surface ni --accent, qui
+       s'eclaircit en sombre. */
+    --rail-bg: #1B5E4F;
+    --rail-text: rgba(250,249,246,.74);
+    --rail-strong: #FAF9F6;
+    --rail-hover: rgba(250,249,246,.10);
+    --rail-line: rgba(250,249,246,.16);
+    --rail-active: #2AA399;
 `;
 
 const PARENT_DARK_TOKENS = `
@@ -86,6 +97,7 @@ const PARENT_DARK_TOKENS = `
     --accent: #5CC4A6;
     --accent-soft: #14302A;
     --accent-text: #A7E3D2;
+    --coral: #F58A79;
     --success: #4ADE80;
     --success-soft: #14532D;
     --warning: #F2A25C;
@@ -93,6 +105,15 @@ const PARENT_DARK_TOKENS = `
     --danger: #F87171;
     --danger-soft: #4A1D1D;
     --shadow-chip: 0 1px 2px rgba(0,0,0,.4);
+    --shadow-card: 0 1px 2px rgba(0,0,0,.35);
+    /* Meme vert, assombri : sur un fond deja noir, le vert de plein jour
+       ressortirait comme une lampe. */
+    --rail-bg: #10261F;
+    --rail-text: rgba(236,243,238,.68);
+    --rail-strong: #ECF3EE;
+    --rail-hover: rgba(236,243,238,.08);
+    --rail-line: rgba(236,243,238,.12);
+    --rail-active: #2AA399;
 `;
 
 const PARENT_STYLE = `
@@ -136,8 +157,7 @@ const PARENT_STYLE = `
   /* --- Navigation laterale --- */
   .sidebar {
     width: 240px; flex: 0 0 240px;
-    background: var(--surface);
-    border-right: 1px solid var(--border);
+    background: var(--rail-bg); color: var(--rail-text);
     display: flex; flex-direction: column;
     padding: 20px 16px;
     position: sticky; top: 0; height: 100vh;
@@ -150,44 +170,48 @@ const PARENT_STYLE = `
   .brand-mark svg { width: 100%; height: 100%; display: block; }
   .brand-title {
     font-family: 'Lora', Georgia, serif;
-    font-weight: 700; font-size: 19px; line-height: 1.1; color: var(--accent);
+    font-weight: 700; font-size: 19px; line-height: 1.1; color: var(--rail-strong);
   }
   .brand-sub {
-    font-size: 10px; color: var(--text-secondary);
+    font-size: 10px; color: var(--rail-text);
     text-transform: uppercase; letter-spacing: .09em; margin-top: 6px;
   }
 
   .nav { display: flex; flex-direction: column; gap: 2px; }
   .nav a {
+    position: relative;
     display: flex; align-items: center; gap: 10px;
     padding: 9px 10px; min-height: 40px;
-    border-radius: 8px;
-    color: var(--text-secondary);
+    border-radius: 9px;
+    color: var(--rail-text);
     font-weight: 500; font-size: 13.5px;
   }
   .nav a svg { width: 17px; height: 17px; flex-shrink: 0; }
-  .nav a:hover { background: var(--surface-alt); }
-  .nav a.active { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+  .nav a:hover { background: var(--rail-hover); color: var(--rail-strong); }
+  .nav a.active { background: var(--rail-active); color: #fff; font-weight: 600; }
+  /* Le libelle court ne sert qu'a la barre d'onglets du telephone ; ailleurs
+     c'est le libelle complet qui s'affiche. */
+  .nav-short { display: none; }
   .nav-count {
-    margin-left: auto; background: var(--warning); color: #fff;
+    margin-left: auto; background: var(--coral); color: #fff;
     font-size: 10.5px; font-weight: 700; border-radius: 20px; padding: 1px 7px;
   }
-  .nav-soon { margin-left: auto; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-secondary); }
+  .nav-soon { margin-left: auto; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--rail-text); }
 
   .account {
     margin-top: auto; display: flex; align-items: center; gap: 10px;
-    padding: 10px 8px; border-top: 1px solid var(--border);
-    color: var(--text); text-decoration: none; border-radius: 8px;
+    padding: 12px 8px 4px; border-top: 1px solid var(--rail-line);
+    color: var(--rail-strong); text-decoration: none;
   }
-  .account:hover { background: var(--surface-alt); }
+  .account:hover .account-name { text-decoration: underline; }
   .avatar {
     width: 32px; height: 32px; flex: 0 0 32px; border-radius: 50%;
-    background: var(--warning); color: #fff;
+    background: var(--coral); color: #fff;
     display: flex; align-items: center; justify-content: center;
     font-weight: 700; font-size: 13px;
   }
   .account-name { font-size: 12.5px; font-weight: 600; }
-  .account-sub { font-size: 11px; color: var(--text-secondary); }
+  .account-sub { font-size: 11px; color: var(--rail-text); }
 
   /* --- Zone principale --- */
   .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -206,7 +230,17 @@ const PARENT_STYLE = `
   .content { flex: 1; padding: 22px 36px 48px; display: flex; flex-direction: column; gap: 18px; }
 
   /* --- Briques communes --- */
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px; }
+  /* Ombre plutot que filet : c'est ce qui detache les cartes du fond creme de
+     la maquette, la ou un filet gris les enfermait. Le mode sombre garde le
+     filet - une ombre ne se voit pas sur du noir. */
+  .card {
+    background: var(--surface); border-radius: 16px; padding: 22px;
+    border: 1px solid transparent; box-shadow: var(--shadow-card);
+  }
+  :root[data-theme="dark"] .card { border-color: var(--border); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .card { border-color: var(--border); }
+  }
   .card-title {
     font-family: 'Lora', Georgia, serif;
     font-weight: 700; font-size: 16px; margin-bottom: 16px;
@@ -568,8 +602,8 @@ export function renderParentShell(options: {
   <meta name="apple-mobile-web-app-title" content="Familyo" />
   <link rel="manifest" href="${PWA_ASSET_PATHS.manifest}" />
   <link rel="preload" as="font" type="font/woff2" href="${FONTS.plexSans}" crossorigin />
-  <link rel="icon" type="image/png" sizes="192x192" href="${PWA_ASSET_PATHS.icon192}" />
-  <link rel="apple-touch-icon" href="${PWA_ASSET_PATHS.appleTouchIcon}" />
+  <link rel="icon" type="image/png" sizes="192x192" href="${ICON_PATHS.icon192}" />
+  <link rel="apple-touch-icon" href="${ICON_PATHS.appleTouch}" />
   <title>${escapeHtml(options.title)} - Espace parent</title>
   <style>${PARENT_STYLE}</style>
 </head>

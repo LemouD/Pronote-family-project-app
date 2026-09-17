@@ -3,6 +3,7 @@ import { fontFace, FONTS } from "./fonts";
 import { escapeHtml } from "./html";
 import { accentVars, type AccentPreset, type ChildPreferences, themeAttribute } from "./preferences";
 import { ACTU_LABEL } from "./actu";
+import { childManifestPath, childServiceWorkerPath, ICON_PATHS } from "./pwa";
 import { ROUTINE_LABEL } from "./routine";
 import { SIGNAL_BANNER, SIGNAL_SCRIPT, SIGNAL_STYLE } from "./signal";
 
@@ -13,6 +14,19 @@ import { SIGNAL_BANNER, SIGNAL_SCRIPT, SIGNAL_STYLE } from "./signal";
  */
 
 export type ChildSectionId = "devoirs" | "devoir-maison" | "prieres" | "mon-temps" | "brevet" | "actu" | "reglages";
+
+/**
+ * L'enregistrement du service worker est ce qui rend la page installable sur
+ * Android : Chrome ne propose pas l'installation sans lui. iOS n'en a pas
+ * besoin, mais l'un n'empeche pas l'autre.
+ */
+function registerServiceWorker(child: ChildConfig): string {
+  return `
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("${childServiceWorkerPath(child)}", { scope: "/enfant/${child.slug}/" }).catch(() => {});
+  }
+`;
+}
 
 const ICON = `viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"`;
 
@@ -557,7 +571,12 @@ export function renderChildShell(options: {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="${accent.light}" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="${escapeHtml(child.displayName)}" />
+  <link rel="manifest" href="${childManifestPath(child)}" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="apple-touch-icon" href="${ICON_PATHS.appleTouch}" />
   <link rel="preload" as="font" type="font/woff2" href="${FONTS.nunito}" crossorigin />
   <title>${escapeHtml(options.title)}</title>
   <style>${CHILD_STYLE}</style>
@@ -583,6 +602,7 @@ export function renderChildShell(options: {
     ${options.footer ?? ""}
   </div>
   ${SIGNAL_BANNER}
+  <script>${registerServiceWorker(child)}</script>
   <script>${TOGGLE_SCRIPT}</script>
   <script>${SIGNAL_SCRIPT}</script>
   ${options.script ? `<script>${options.script}</script>` : ""}
