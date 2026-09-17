@@ -3,6 +3,7 @@ import icon192 from "./assets/icon-192.png";
 import icon512 from "./assets/icon-512.png";
 import iconMaskable512 from "./assets/icon-maskable-512.png";
 import { FONTS } from "./fonts";
+import { LOGO_GREEN } from "./logo";
 
 /**
  * Ressources rendant l'espace parent installable (PWA). Elles ne contiennent
@@ -21,7 +22,9 @@ export const PWA_ASSET_PATHS = {
   appleTouchIcon: "/parent/apple-touch-icon.png"
 } as const;
 
-export const PARENT_THEME_COLOR = "#4338CA";
+// La barre de titre du systeme reprend le vert du logo : sur un telephone,
+// l'application installee et son icone doivent se repondre.
+export const PARENT_THEME_COLOR = LOGO_GREEN;
 
 const MANIFEST = {
   name: "Familyo - Espace Parent",
@@ -55,7 +58,7 @@ const SERVICE_WORKER = `
 // manifeste en fait partie. Sans ca, un appareil deja installe garderait
 // l'ancien indefiniment : la strategie de lecture est "cache d'abord", et
 // l'activation ne supprime que les caches dont le nom differe.
-const CACHE = "parent-shell-v3";
+const CACHE = "parent-shell-v4";
 const STATIC_ASSETS = ${JSON.stringify([
   PWA_ASSET_PATHS.manifest,
   PWA_ASSET_PATHS.icon192,

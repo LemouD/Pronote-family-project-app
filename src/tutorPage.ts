@@ -18,7 +18,7 @@ const TUTOR_STYLE = `
     color-scheme: light dark;
     --bg: #F7F8FA; --surface: #FFFFFF; --surface-alt: #F1F2F5; --border: #E4E7EC;
     --text: #101828; --text-secondary: #667085;
-    --accent: #4338CA; --accent-soft: #EEF2FF;
+    --accent: #1B5E4F; --accent-soft: #E7F3EB;
     --ok: #16A34A; --ok-soft: #DCFCE7;
     --error: #DC2626; --error-soft: #FEE2E2;
   }
@@ -26,7 +26,7 @@ const TUTOR_STYLE = `
     :root {
       --bg: #0B0F19; --surface: #111827; --surface-alt: #182034; --border: #1F2937;
       --text: #F3F4F6; --text-secondary: #9CA3AF;
-      --accent: #818CF8; --accent-soft: #1E1B4B;
+      --accent: #5CC4A6; --accent-soft: #14302A;
       --ok: #4ADE80; --ok-soft: #14532D;
       --error: #F87171; --error-soft: #7F1D1D;
     }
