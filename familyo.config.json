@@ -1,0 +1,36 @@
+{
+  "_lisezMoi": [
+    "Configuration de cette installation de Familyo. Une famille, un deploiement.",
+    "Ce fichier est le seul a modifier pour installer l'application chez une autre famille.",
+    "Il est genere par : cd bootstrap && node nouvelle-famille.mjs --enfant \"Prenom:Classe\"",
+    "Les slugs sont des URL secretes : les regenerer si l'un d'eux venait a fuiter.",
+    "Aucun identifiant ne doit figurer ici - ils vivent dans les secrets Cloudflare et GitHub."
+  ],
+  "enfants": [
+    {
+      "slug": "malick-K5p0nA65n8L1",
+      "displayName": "Malick",
+      "secretPrefix": "MALICK",
+      "externallySynced": true,
+      "schoolYear": "3e",
+      "defaultAccentId": "turquoise",
+      "defaultAvatar": "⚽",
+      "avatars": ["⚽", "🏆", "👟", "🥅", "🧤", "🥇", "🍥", "🐉", "🗡️", "🥷", "🔥", "🍜"],
+      "tutorSlug": "malick-9PgS5sSs4qt-",
+      "homeworkSubjects": ["Mathematiques", "Anglais"],
+      "examPrep": "brevet"
+    },
+    {
+      "slug": "codou-tBCiBx5FYmTB",
+      "displayName": "Codou",
+      "secretPrefix": "CODOU",
+      "externallySynced": true,
+      "schoolYear": "5e",
+      "defaultAccentId": "corail",
+      "defaultAvatar": "🎤",
+      "avatars": ["🎤", "🎧", "💜", "🩷", "🎀", "💃", "🦋", "✨", "🧋", "🐰", "🎶", "⭐"],
+      "tutorSlug": "codou-qLQcKaT-E5cM",
+      "homeworkSubjects": ["Francais"]
+    }
+  ]
+}
