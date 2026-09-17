@@ -146,8 +146,12 @@ self.addEventListener("fetch", (event) => {
 
 const ICON_ASSETS = [ICON_PATHS.icon192, ICON_PATHS.icon512, ICON_PATHS.maskable, ICON_PATHS.appleTouch];
 
-const PARENT_SERVICE_WORKER = serviceWorkerScript("parent-shell-v5", [
+const PARENT_SERVICE_WORKER = serviceWorkerScript("parent-shell-v6", [
   PWA_ASSET_PATHS.manifest,
+  // Le logo de l'en-tete passe par <img src="/favicon.svg"> (voir
+  // parentShell.ts) : sans lui dans le cache, la barre du telephone perdrait
+  // sa vignette hors ligne.
+  "/favicon.svg",
   ...ICON_ASSETS,
   FONTS.plexSans,
   FONTS.lora

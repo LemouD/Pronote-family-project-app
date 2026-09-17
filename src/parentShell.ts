@@ -1,12 +1,11 @@
 import { fontFace, FONTS } from "./fonts";
 import { escapeHtml } from "./html";
-import { APP_ICON_SVG } from "./logo";
 import { type ParentPreferences, themeAttribute } from "./preferences";
 import { ICON_PATHS, PARENT_THEME_COLOR, PWA_ASSET_PATHS } from "./pwa";
 
 /**
- * Coquille de l'espace parent : navigation laterale claire, accent indigo,
- * IBM Plex Sans. Reprend la maquette "Devoirs Famille - Parent et Enfant".
+ * Coquille de l'espace parent : barre laterale vert foret, IBM Plex Sans,
+ * titres en serif. Reprend la charte Familyo.
  * Volontairement distincte de l'espace enfant (render.ts), qui a sa propre
  * identite chaleureuse - ce sont deux applications, pas deux vues.
  */
@@ -17,6 +16,12 @@ interface NavItem {
   id: ParentSectionId;
   href: string;
   label: string;
+  /**
+   * Libelle de la barre d'onglets du telephone. Cinq onglets sur 375 px, ca
+   * fait 75 px chacun : "Tableau de bord" n'y tient pas. Les deux libelles
+   * sont rendus, le CSS choisit lequel montrer.
+   */
+  short: string;
   icon: string;
   /** Section presente dans la navigation mais pas encore implementee. */
   soon?: boolean;
@@ -24,35 +29,55 @@ interface NavItem {
 
 const ICON = `viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"`;
 
+/**
+ * Le logo passe par <img> et non par un SVG inline : il apparait deux fois
+ * dans la page (barre laterale et en-tete du telephone, l'un ou l'autre selon
+ * la largeur), et deux copies inline donneraient deux fois le meme
+ * identifiant de decoupe. Le fichier est deja en cache, servi par /favicon.svg.
+ */
+const BRAND_MARK = `<img class="brand-mark" src="/favicon.svg" alt="" width="30" height="30" />`;
+
+/**
+ * Cache le texte a l'oeil sans le retirer de l'arbre d'accessibilite - un
+ * display:none le supprimerait, et les onglets reduits a leur icone
+ * n'auraient plus de nom du tout pour un lecteur d'ecran.
+ */
+const VISUALLY_HIDDEN = `position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap;`;
+
 const NAV_ITEMS: NavItem[] = [
   {
     id: "overview",
     href: "/parent",
-    label: "Vue d'ensemble",
+    label: "Tableau de bord",
+    short: "Accueil",
     icon: `<svg ${ICON}><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>`
   },
   {
     id: "devoirs",
     href: "/parent/devoirs",
-    label: "Devoirs",
+    label: "Devoirs & taches",
+    short: "Devoirs",
     icon: `<svg ${ICON}><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>`
   },
   {
     id: "notes",
     href: "/parent/notes",
-    label: "Notes",
+    label: "Suivi scolaire",
+    short: "Suivi",
     icon: `<svg ${ICON}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`
   },
   {
     id: "devoir-maison",
     href: "/parent/devoir-maison",
     label: "Devoir maison",
+    short: "Maison",
     icon: `<svg ${ICON}><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 00-4 12.7c.6.5 1 1.2 1 2.05V17h6v-.25c0-.85.4-1.55 1-2.05A7 7 0 0012 2z"/></svg>`
   },
   {
     id: "reglages",
     href: "/parent/reglages",
     label: "Reglages",
+    short: "Reglages",
     icon: `<svg ${ICON}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`
   }
 ];
@@ -166,8 +191,7 @@ const PARENT_STYLE = `
   .brand-row { display: flex; align-items: center; gap: 9px; }
   /* Le logo porte deja son carre vert arrondi : pas de fond ici, sinon on
      empilerait deux carres de vert legerement differents. */
-  .brand-mark { width: 30px; height: 30px; flex: 0 0 30px; }
-  .brand-mark svg { width: 100%; height: 100%; display: block; }
+  .brand-mark { width: 30px; height: 30px; flex: 0 0 30px; display: block; }
   .brand-title {
     font-family: 'Lora', Georgia, serif;
     font-weight: 700; font-size: 19px; line-height: 1.1; color: var(--rail-strong);
@@ -215,6 +239,20 @@ const PARENT_STYLE = `
 
   /* --- Zone principale --- */
   .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  /* En-tete reserve au telephone (voir la requete media tout en bas). */
+  .mobile-bar {
+    display: none; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px 16px; background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 15;
+  }
+  .mobile-bar .brand-title { color: var(--accent); font-size: 18px; }
+  .mobile-account {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 12.5px; font-weight: 600; color: var(--text-secondary);
+  }
+  .mobile-account .avatar { width: 28px; height: 28px; flex: 0 0 28px; font-size: 12px; }
   /* Pas de filet sous le titre : la maquette laisse le titre respirer dans la
      zone de contenu, sans separateur. */
   .topbar {
@@ -253,7 +291,7 @@ const PARENT_STYLE = `
     min-width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
   }
 
-  .grid-children { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+  .grid-children { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
   /* Deux colonnes, chacune empilant ses cartes : la maquette met les alertes
      et le devoir maison a gauche, les notes recentes a droite. */
   .grid-lower { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
@@ -288,8 +326,10 @@ const PARENT_STYLE = `
   .status-pill.warn { background: var(--warning-soft); color: var(--warning); }
   .status-pill.danger { background: var(--danger-soft); color: var(--danger); }
 
-  .meters-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-  @media (max-width: 520px) { .meters-row { grid-template-columns: 1fr; } }
+  /* auto-fit plutot qu'une requete media : ce qui compte est la largeur de
+     la carte, pas celle de la fenetre - une carte d'enfant peut etre
+     etroite sur un grand ecran. */
+  .meters-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 18px 24px; }
   .meter-name { font-size: 12.5px; color: var(--text-secondary); margin-bottom: 9px; }
   .meter-line { display: flex; align-items: center; gap: 10px; }
   .meter-count { font-size: 19px; font-weight: 700; line-height: 1; white-space: nowrap; }
@@ -532,27 +572,66 @@ const PARENT_STYLE = `
   .empty { color: var(--text-secondary); font-size: 12.5px; margin: 0; }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
 
-  @media (max-width: 900px) {
+  /* --- Tablette : la barre laterale se reduit a un rail d'icones ---
+     A cette largeur, 240 px de navigation coutent plus qu'ils ne rapportent :
+     le contenu, lui, en a besoin. Les libelles restent lisibles par un lecteur
+     d'ecran (voir .nav-full ci-dessous), ils ne sont que caches a l'oeil. */
+  @media (min-width: 700px) and (max-width: 1023px) {
+    .sidebar { width: 84px; flex: 0 0 84px; padding: 18px 8px; align-items: center; }
+    .brand { padding: 2px 0 20px; }
+    .brand-title, .brand-sub { display: none; }
+    .brand-mark { width: 34px; height: 34px; flex: 0 0 34px; }
+    .nav { width: 100%; gap: 4px; }
+    .nav a {
+      flex-direction: column; gap: 4px; padding: 9px 3px;
+      text-align: center; font-size: 10px; line-height: 1.15;
+    }
+    .nav a svg { width: 19px; height: 19px; }
+    .nav-full { ${VISUALLY_HIDDEN} }
+    .nav-short { display: block; }
+    .nav-soon { display: none; }
+    .nav-count { position: absolute; top: 4px; right: 6px; margin: 0; }
+    .account { flex-direction: column; gap: 6px; padding: 12px 0 4px; }
+    .account-name, .account-sub { display: none; }
+    .topbar, .content { padding-inline: 22px; }
+  }
+
+  /* --- Telephone : la navigation passe en barre d'onglets en bas ---
+     Une barre horizontale en haut obligeait a faire defiler lateralement pour
+     atteindre Reglages, sans que rien ne le laisse deviner. Cinq onglets a
+     largeur egale tiennent dans 375 px, et le pouce les atteint tous. */
+  @media (max-width: 699px) {
     .app { flex-direction: column; }
     .sidebar {
+      position: fixed; top: auto; left: 0; right: 0; bottom: 0;
       width: auto; flex: none; height: auto;
-      flex-direction: row; align-items: center; gap: 12px;
-      padding: 10px 12px; overflow-x: auto;
-      border-right: none; border-bottom: 1px solid var(--border);
-      z-index: 10;
+      flex-direction: row; align-items: stretch; gap: 0;
+      padding: 5px 4px calc(5px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--rail-line);
+      z-index: 20;
     }
-    .brand { padding: 0; }
-    .brand-text, .account { display: none; }
-    .nav { flex-direction: row; gap: 4px; }
-    .nav a { white-space: nowrap; }
+    .brand, .account { display: none; }
+    .nav { flex: 1; flex-direction: row; gap: 2px; }
+    .nav a {
+      flex: 1 1 0; min-width: 0;
+      flex-direction: column; justify-content: center; gap: 3px;
+      padding: 6px 2px; min-height: 50px; border-radius: 12px;
+      font-size: 10px; line-height: 1.1; text-align: center;
+    }
+    .nav a svg { width: 20px; height: 20px; }
+    .nav-full { ${VISUALLY_HIDDEN} }
+    .nav-short { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .nav-soon { display: none; }
-    .topbar, .content { padding-inline: 16px; }
+    .nav-count { position: absolute; top: 1px; left: 50%; margin: 0; transform: translateX(3px); font-size: 9.5px; }
+
+    .mobile-bar { display: flex; }
+    .topbar { padding: 18px 16px 0; }
+    .topbar h1 { font-size: 22px; }
+    /* La barre d'onglets flotte au-dessus du contenu : sans cette reserve,
+       la derniere carte finit dessous et reste inatteignable. */
+    .content { padding: 16px 16px calc(74px + env(safe-area-inset-bottom)); gap: 14px; }
+    .card { padding: 18px; }
     .grid-lower { grid-template-columns: 1fr; }
-    .row { grid-template-columns: 1fr auto; gap: 4px 10px; padding: 14px 16px; }
-    .row-head { display: none; }
-    .row-subject { grid-column: 1; }
-    .row-text { grid-column: 1 / -1; }
-    .row-due { grid-column: 1; }
   }
 `;
 
@@ -571,9 +650,9 @@ function renderNav(active: ParentSectionId, pendingReviews: number): string {
     } else if (item.soon) {
       trailing = `<span class="nav-soon">bientot</span>`;
     }
-    return `<a href="${item.href}"${isActive ? ' class="active" aria-current="page"' : ""}>${item.icon}<span>${escapeHtml(
+    return `<a href="${item.href}"${isActive ? ' class="active" aria-current="page"' : ""}>${item.icon}<span class="nav-full">${escapeHtml(
       item.label
-    )}</span>${trailing}</a>`;
+    )}</span><span class="nav-short" aria-hidden="true">${escapeHtml(item.short)}</span>${trailing}</a>`;
   }).join("");
 }
 
@@ -612,7 +691,7 @@ export function renderParentShell(options: {
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-row">
-          <div class="brand-mark">${APP_ICON_SVG}</div>
+          ${BRAND_MARK}
           <div class="brand-title">Familyo</div>
         </div>
         <div class="brand-sub">Espace Parent</div>
@@ -627,6 +706,20 @@ export function renderParentShell(options: {
       </a>
     </aside>
     <main class="main">
+      <!-- En-tete du telephone : la barre laterale y devient une barre
+           d'onglets en bas, donc l'identite et le compte remontent ici. Sur
+           grand ecran ce bloc n'existe pas, c'est la barre laterale qui les
+           porte. -->
+      <header class="mobile-bar">
+        <div class="brand-row">
+          ${BRAND_MARK}
+          <div class="brand-title">Familyo</div>
+        </div>
+        <a class="mobile-account" href="/parent/reglages">
+          Bonjour, ${escapeHtml(prefs.name)}
+          <span class="avatar">${escapeHtml(prefs.name.slice(0, 1).toUpperCase())}</span>
+        </a>
+      </header>
       <div class="topbar">
         <div>
           <h1>${escapeHtml(options.title)}</h1>
