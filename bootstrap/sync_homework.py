@@ -86,6 +86,34 @@ def update_github_secret(name: str, value: str) -> None:
     )
 
 
+def persist_rotated_credentials(prefix: str, client: "pronotepy.Client") -> None:
+    """Enregistre les identifiants renouveles par la connexion.
+
+    Pronote les fait tourner a chaque token_login : a la seconde ou la
+    connexion reussit, ceux qui sont stockes sont deja perimes. Tant qu'ils ne
+    sont pas reecrits, la prochaine synchro echouera - et il faudra relancer
+    login.mjs avec le mot de passe ENT pour s'en sortir.
+
+    D'ou deux precautions. Cet appel vient juste apres la connexion, avant tout
+    le reste, pour que la fenetre soit la plus courte possible. Et un echec dit
+    quoi faire, au lieu de laisser une trace d'exception que personne ne
+    rattachera au bon probleme trois jours plus tard.
+    """
+    try:
+        update_github_secret(f"PRONOTE_{prefix}_USERNAME", client.username)
+        update_github_secret(f"PRONOTE_{prefix}_PASSWORD", client.password)
+    except Exception as error:
+        print(
+            f"[{prefix}] ECHEC d'ecriture des identifiants renouvelles : {error}\n"
+            f"[{prefix}] Les identifiants stockes sont desormais PERIMES : la prochaine\n"
+            f"[{prefix}] synchro echouera. Verifier GH_TOKEN (PAT fine-grained, ce depot,\n"
+            f"[{prefix}] permission Secrets: Read and write), puis relancer :\n"
+            f"[{prefix}]   cd bootstrap && node login.mjs --url <url> --child <prenom>",
+            file=sys.stderr,
+        )
+        raise
+
+
 def to_float(value: object) -> float | None:
     """Pronote renvoie ses nombres en texte, parfois avec une virgule."""
     if value is None:
@@ -157,6 +185,10 @@ def sync_child(child: dict) -> None:
         print(f"[{prefix}] connexion refusee.")
         return
 
+    # Avant toute autre chose : la connexion a fait tourner les identifiants,
+    # ceux qui sont stockes ne valent deja plus rien.
+    persist_rotated_credentials(prefix, client)
+
     today = datetime.date.today()
     tomorrow = today + datetime.timedelta(days=1)
     homeworks = client.homework(today, tomorrow)
@@ -189,11 +221,8 @@ def sync_child(child: dict) -> None:
         datetime.datetime.now(datetime.timezone.utc).isoformat(),
     )
 
-    # Les identifiants tournent a chaque connexion : on remet a jour les
-    # secrets GitHub systematiquement, pour que la prochaine synchro
-    # fonctionne encore.
-    update_github_secret(f"PRONOTE_{prefix}_USERNAME", client.username)
-    update_github_secret(f"PRONOTE_{prefix}_PASSWORD", client.password)
+    # Les identifiants renouveles ont deja ete enregistres juste apres la
+    # connexion (voir persist_rotated_credentials).
 
 
 def main() -> None:
