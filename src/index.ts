@@ -123,16 +123,40 @@ import {
   renderChildTutoring
 } from "./render";
 
-// Contenu 100% genere cote serveur, pas de ressources externes : une CSP
-// stricte (pas de scripts/objets tiers) reste compatible avec le <script>/
-// <style> inline utilises dans render.ts et parentShell.ts.
-const SECURITY_HEADERS = {
+const BASE_HEADERS = {
   "x-content-type-options": "nosniff",
-  "referrer-policy": "no-referrer",
-  "content-security-policy":
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self'; " +
-    "worker-src 'self'; manifest-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+  "referrer-policy": "no-referrer"
 };
+
+/**
+ * Politique de securite du contenu.
+ *
+ * script-src n'autorise plus 'unsafe-inline' : chaque reponse HTML tire un
+ * nonce, et seuls les <script> qui le portent s'executent. Sans ca, une faille
+ * d'injection - dans un libelle de matiere venu de Pronote, dans une reponse
+ * du modele - deviendrait une execution de script. Avec, elle reste du texte
+ * inerte, parce qu'un attaquant ne peut pas deviner un nonce tire au hasard a
+ * chaque requete.
+ *
+ * style-src garde 'unsafe-inline', et c'est une limite assumee : un nonce ne
+ * couvre que les balises <style>, pas les attributs style="" - or l'appli en
+ * utilise partout pour les couleurs par enfant et les jauges. Les retirer
+ * demanderait de repenser tout le passage de couleurs. Un attribut de style
+ * seul ne permet pas d'executer du code ; c'est le vecteur faible des deux.
+ */
+function contentSecurityPolicy(nonce?: string): string {
+  const scriptSrc = nonce ? `'self' 'nonce-${nonce}'` : "'self'";
+  return (
+    `default-src 'self'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self'; ` +
+    "worker-src 'self'; manifest-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+  );
+}
+
+const SECURITY_HEADERS = { ...BASE_HEADERS, "content-security-policy": contentSecurityPolicy() };
+
+function newNonce(): string {
+  return btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
+}
 
 // Donnees personnelles d'un enfant : jamais mises en cache (navigateur ou
 // intermediaire), utile notamment sur une tablette partagee.
@@ -145,10 +169,27 @@ const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"
   <path d="m30 32 5 5 10-11" fill="none" stroke="#f5b942" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/>
 </svg>`;
 
+/**
+ * Toutes les pages passent par ici, donc le nonce se pose ici plutot que de
+ * circuler dans la quarantaine d'appelants et de finir par etre oublie dans
+ * l'un d'eux.
+ *
+ * La substitution est sure parce que le corps est integralement produit par
+ * nous : tout ce qui vient de l'exterieur - Pronote, le modele, un parent -
+ * est passe par escapeHtml, donc un "<script" litteral ne peut pas y avoir ete
+ * injecte. Les seules balises rencontrees sont les notres.
+ */
 function html(body: string, status = 200): Response {
-  return new Response(body, {
+  const nonce = newNonce();
+
+  return new Response(body.replaceAll("<script>", `<script nonce="${nonce}">`), {
     status,
-    headers: { "content-type": "text/html; charset=utf-8", ...SECURITY_HEADERS, ...NO_STORE }
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      ...BASE_HEADERS,
+      "content-security-policy": contentSecurityPolicy(nonce),
+      ...NO_STORE
+    }
   });
 }
 
