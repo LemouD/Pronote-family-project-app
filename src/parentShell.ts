@@ -59,43 +59,44 @@ const NAV_ITEMS: NavItem[] = [
 const PARENT_LIGHT_TOKENS = `
     --bg: #F7F8FA;
     --surface: #FFFFFF;
-    --surface-alt: #F1F2F5;
-    --border: #E4E7EC;
-    --text: #101828;
-    --text-secondary: #667085;
-    --accent: #4338CA;
-    --accent-soft: #EEF2FF;
-    --accent-text: #3730A3;
+    --surface-alt: #F4F5F7;
+    --border: #E8EAEE;
+    --text: #1A2B23;
+    --text-secondary: #6B7280;
+    --accent: #1B5E3F;
+    --accent-soft: #E7F3EB;
+    --accent-text: #14563A;
     --success: #16A34A;
     --success-soft: #DCFCE7;
-    --warning: #D97706;
-    --warning-soft: #FEF3C7;
+    --warning: #D9761F;
+    --warning-soft: #FDEEE1;
     --danger: #DC2626;
-    --danger-soft: #FEE2E2;
-    --shadow-chip: 0 1px 2px rgba(0,0,0,.08);
+    --danger-soft: #FDE8E8;
+    --shadow-chip: 0 1px 2px rgba(0,0,0,.06);
 `;
 
 const PARENT_DARK_TOKENS = `
-    --bg: #0B0F19;
-    --surface: #111827;
-    --surface-alt: #182034;
-    --border: #1F2937;
-    --text: #F3F4F6;
-    --text-secondary: #9CA3AF;
-    --accent: #818CF8;
-    --accent-soft: #1E1B4B;
-    --accent-text: #E0E7FF;
+    --bg: #0C1310;
+    --surface: #141D18;
+    --surface-alt: #1B2721;
+    --border: #23332B;
+    --text: #ECF3EE;
+    --text-secondary: #9AA8A0;
+    --accent: #5FBE8C;
+    --accent-soft: #16301F;
+    --accent-text: #A7E3C1;
     --success: #4ADE80;
     --success-soft: #14532D;
-    --warning: #FBBF24;
-    --warning-soft: #78350F;
+    --warning: #F2A25C;
+    --warning-soft: #4A2C13;
     --danger: #F87171;
-    --danger-soft: #7F1D1D;
+    --danger-soft: #4A1D1D;
     --shadow-chip: 0 1px 2px rgba(0,0,0,.4);
 `;
 
 const PARENT_STYLE = `
   ${fontFace("IBM Plex Sans", FONTS.plexSans, "100 700")}
+  ${fontFace("Lora", FONTS.lora, "400 700")}
 
   :root {
     color-scheme: light dark;
@@ -124,6 +125,11 @@ const PARENT_STYLE = `
   }
   a { color: var(--accent); text-decoration: none; }
 
+  /* Les titres passent en serif : c'est ce qui distingue le plus la maquette
+     de l'ancienne interface, et ca separe nettement les reperes de lecture du
+     texte courant, qui reste en sans. */
+  .display { font-family: 'Lora', Georgia, 'Times New Roman', serif; }
+
   .app { display: flex; min-height: 100vh; }
 
   /* --- Navigation laterale --- */
@@ -135,15 +141,22 @@ const PARENT_STYLE = `
     padding: 20px 16px;
     position: sticky; top: 0; height: 100vh;
   }
-  .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 24px; }
+  .brand { display: block; padding: 4px 8px 26px; }
+  .brand-row { display: flex; align-items: center; gap: 9px; }
   .brand-mark {
-    width: 32px; height: 32px; flex: 0 0 32px;
+    width: 30px; height: 30px; flex: 0 0 30px;
     border-radius: 9px; background: var(--accent);
     display: flex; align-items: center; justify-content: center;
   }
-  .brand-mark svg { width: 18px; height: 18px; color: #fff; }
-  .brand-title { font-weight: 700; font-size: 15px; line-height: 1.1; }
-  .brand-sub { font-size: 11px; color: var(--text-secondary); }
+  .brand-mark svg { width: 17px; height: 17px; color: #fff; }
+  .brand-title {
+    font-family: 'Lora', Georgia, serif;
+    font-weight: 700; font-size: 19px; line-height: 1.1; color: var(--accent);
+  }
+  .brand-sub {
+    font-size: 10px; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: .09em; margin-top: 6px;
+  }
 
   .nav { display: flex; flex-direction: column; gap: 2px; }
   .nav a {
@@ -169,34 +182,50 @@ const PARENT_STYLE = `
   }
   .account:hover { background: var(--surface-alt); }
   .avatar {
-    width: 30px; height: 30px; flex: 0 0 30px; border-radius: 50%;
-    background: var(--accent-soft); color: var(--accent-text);
+    width: 32px; height: 32px; flex: 0 0 32px; border-radius: 50%;
+    background: var(--warning); color: #fff;
     display: flex; align-items: center; justify-content: center;
     font-weight: 700; font-size: 13px;
   }
   .account-name { font-size: 12.5px; font-weight: 600; }
+  .account-sub { font-size: 11px; color: var(--text-secondary); }
 
   /* --- Zone principale --- */
   .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  /* Pas de filet sous le titre : la maquette laisse le titre respirer dans la
+     zone de contenu, sans separateur. */
   .topbar {
-    min-height: 64px;
-    display: flex; align-items: center; justify-content: space-between; gap: 16px;
-    padding: 10px 28px;
-    border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 16px;
+    padding: 30px 36px 0;
     flex-wrap: wrap;
   }
-  .topbar h1 { font-size: 18px; font-weight: 700; margin: 0; }
-  .topbar .subtitle { font-size: 12px; color: var(--text-secondary); margin: 0; }
-  .content { flex: 1; padding: 24px 28px 48px; display: flex; flex-direction: column; gap: 20px; }
+  .topbar h1 {
+    font-family: 'Lora', Georgia, serif;
+    font-size: 27px; font-weight: 700; margin: 0; letter-spacing: -.01em;
+  }
+  .topbar .subtitle { font-size: 13px; color: var(--text-secondary); margin: 4px 0 0; }
+  .content { flex: 1; padding: 22px 36px 48px; display: flex; flex-direction: column; gap: 18px; }
 
   /* --- Briques communes --- */
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
-  .card-title { font-weight: 700; font-size: 13.5px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px; }
+  .card-title {
+    font-family: 'Lora', Georgia, serif;
+    font-weight: 700; font-size: 16px; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
   .card-title svg { width: 16px; height: 16px; color: var(--text-secondary); }
-  .card-title .count { margin-left: auto; background: var(--warning-soft); color: var(--warning); font-size: 11px; font-weight: 700; border-radius: 20px; padding: 2px 8px; }
+  .card-title .count {
+    margin-left: auto; background: var(--warning); color: #fff;
+    font-size: 11px; font-weight: 700; border-radius: 999px;
+    min-width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+  }
 
-  .grid-children { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
-  .grid-lower { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 16px; align-items: start; }
+  .grid-children { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+  /* Deux colonnes, chacune empilant ses cartes : la maquette met les alertes
+     et le devoir maison a gauche, les notes recentes a droite. */
+  .grid-lower { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+  .grid-col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  @media (max-width: 900px) { .grid-lower { grid-template-columns: 1fr; } }
 
   /* Couleur de l'enfant : l'element porte les deux variantes en style inline,
      c'est le CSS qui choisit selon le theme (un style inline l'emporterait
@@ -204,32 +233,71 @@ const PARENT_STYLE = `
      sombre est faite plus haut, avec les jetons de theme. */
   .card, .row { --child-accent: var(--c-light); --child-soft: var(--s-light); }
 
-  .child-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .child-head { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
   .child-avatar {
-    width: 40px; height: 40px; flex: 0 0 40px; border-radius: 50%;
-    background: var(--child-soft); color: var(--child-accent);
+    width: 42px; height: 42px; flex: 0 0 42px; border-radius: 50%;
+    background: var(--child-accent); color: #fff;
     display: flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 15px;
+    font-weight: 700; font-size: 16px;
   }
-  .child-name { font-weight: 700; font-size: 15px; }
-  .child-year { font-size: 12px; color: var(--text-secondary); }
+  .child-name { font-weight: 700; font-size: 15.5px; }
+  .child-year { font-size: 12.5px; color: var(--text-secondary); margin-top: 1px; }
 
-  .meter-label { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 6px; }
-  .meter-label span:first-child { color: var(--text-secondary); }
-  .meter-label span:last-child { font-weight: 600; }
-  .meter { height: 7px; border-radius: 20px; background: var(--surface-alt); overflow: hidden; }
-  .meter > div { height: 100%; border-radius: 20px; background: var(--child-accent); }
+  /* Etat de synchro en pastille, dans l'angle de la carte plutot qu'en
+     bandeau d'alerte : c'est une information de contexte, pas un incident. */
+  .status-pill {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 5px 11px;
+    white-space: nowrap;
+  }
+  .status-pill svg { width: 13px; height: 13px; }
+  .status-pill.ok { background: var(--success-soft); color: var(--success); }
+  .status-pill.warn { background: var(--warning-soft); color: var(--warning); }
+  .status-pill.danger { background: var(--danger-soft); color: var(--danger); }
 
-  .alert { display: flex; gap: 10px; padding: 10px; border-radius: 8px; }
-  .alert-bar { width: 6px; flex: 0 0 6px; border-radius: 4px; }
+  .meters-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 520px) { .meters-row { grid-template-columns: 1fr; } }
+  .meter-name { font-size: 12.5px; color: var(--text-secondary); margin-bottom: 9px; }
+  .meter-line { display: flex; align-items: center; gap: 10px; }
+  .meter-count { font-size: 19px; font-weight: 700; line-height: 1; white-space: nowrap; }
+  .meter-pct { font-size: 12px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
+  .meter { flex: 1; height: 6px; border-radius: 20px; background: var(--surface-alt); overflow: hidden; }
+  .meter > div { height: 100%; border-radius: 20px; background: var(--accent); }
+  .meter.prieres > div { background: var(--warning); }
+
+  /* Fond neutre et filet colore : la couleur dit le niveau sans teinter tout
+     le bloc, ce qui evite qu'une page d'alertes ressemble a un sapin. */
+  .alert { display: flex; gap: 11px; align-items: center; padding: 12px 14px; border-radius: 10px; background: var(--surface-alt); }
+  .alert-bar { width: 3px; flex: 0 0 3px; border-radius: 4px; align-self: stretch; }
+  .alert-icon { width: 17px; height: 17px; flex-shrink: 0; }
   .alert-title { font-size: 12.5px; font-weight: 600; color: var(--text); }
   .alert-detail { font-size: 11.5px; color: var(--text-secondary); margin-top: 2px; }
-  .alert-ok { background: var(--success-soft); }
+  .alert-ok .alert-bar, .alert-ok .alert-icon { background: transparent; color: var(--success); }
   .alert-ok .alert-bar { background: var(--success); }
-  .alert-warn { background: var(--warning-soft); }
   .alert-warn .alert-bar { background: var(--warning); }
-  .alert-danger { background: var(--danger-soft); }
+  .alert-warn .alert-icon { color: var(--warning); }
   .alert-danger .alert-bar { background: var(--danger); }
+  .alert-danger .alert-icon { color: var(--danger); }
+
+  /* Pastille de l'enfant : reprend sa couleur, partout ou une ligne concerne
+     l'un plutot que l'autre. */
+  .child-chip {
+    font-size: 11px; font-weight: 600; border-radius: 999px; padding: 3px 9px;
+    background: var(--child-soft); color: var(--child-accent); white-space: nowrap;
+  }
+
+  .grade-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--border); }
+  .grade-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .grade-row:first-child { padding-top: 0; }
+  .grade-subject { font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+  .grade-date { font-size: 11.5px; color: var(--text-secondary); margin-top: 2px; }
+  .grade-side { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+  .grade-pill { font-size: 12.5px; font-weight: 700; border-radius: 8px; padding: 5px 9px; white-space: nowrap; }
+  .grade-pill.bon { background: var(--success-soft); color: var(--success); }
+  .grade-pill.moyen { background: var(--warning-soft); color: var(--warning); }
+  .grade-pill.faible { background: var(--danger-soft); color: var(--danger); }
+
+  .open-link { font-size: 12.5px; font-weight: 600; color: var(--accent); white-space: nowrap; }
 
   .badge { font-size: 11.5px; font-weight: 700; border-radius: 20px; padding: 4px 10px; white-space: nowrap; }
   .badge-done { background: var(--success-soft); color: var(--success); }
@@ -237,24 +305,43 @@ const PARENT_STYLE = `
   .badge-new { background: var(--accent-soft); color: var(--accent-text); }
 
   /* --- Tableau des devoirs --- */
-  .table-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-  .row { display: grid; grid-template-columns: 120px 150px 1fr 120px 130px; gap: 12px; padding: 14px 20px; align-items: center; font-size: 13px; border-bottom: 1px solid var(--border); }
-  .row:last-child { border-bottom: none; }
-  .row-head { padding: 12px 20px; font-size: 11.5px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .04em; }
-  .row-child { display: flex; align-items: center; gap: 8px; font-weight: 600; }
-  .dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: var(--child-accent); }
-  .row-muted { color: var(--text-secondary); }
-  .row-done .row-text { text-decoration: line-through; color: var(--text-secondary); }
+  /* Une ligne par devoir, en carte plutot qu'en tableau : a cette densite le
+     tableau imposait des colonnes fixes qui coupaient les enonces longs. */
+  .hw-day { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-secondary); margin: 10px 0 2px; }
+  .hw-day:first-child { margin-top: 0; }
+  .hw-row {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 18px;
+  }
+  .hw-row.done { background: var(--surface-alt); border-color: transparent; }
+  .hw-check {
+    width: 20px; height: 20px; flex: 0 0 20px; border-radius: 50%;
+    border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .hw-check svg { width: 12px; height: 12px; color: #fff; visibility: hidden; }
+  .hw-row.done .hw-check { background: var(--success); border-color: var(--success); }
+  .hw-row.done .hw-check svg { visibility: visible; }
+  .hw-subject {
+    font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    color: var(--child-accent); white-space: nowrap;
+  }
+  .hw-text { flex: 1; min-width: 0; font-size: 13.5px; overflow-wrap: anywhere; }
+  .hw-row.done .hw-text, .hw-row.done .hw-subject { text-decoration: line-through; opacity: .55; }
+  .hw-side { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
-  /* --- Filtres segmentes --- */
-  .segmented { display: flex; background: var(--surface-alt); border-radius: 8px; padding: 3px; gap: 2px; }
+  /* --- Filtres en pastilles --- */
+  .segmented { display: flex; gap: 8px; flex-wrap: wrap; }
   .segmented a {
-    padding: 6px 12px; border-radius: 6px;
-    font-size: 12px; font-weight: 600;
+    padding: 8px 17px; border-radius: 999px;
+    font-size: 13px; font-weight: 600;
+    background: var(--surface); border: 1px solid var(--border);
     color: var(--text-secondary);
   }
-  .segmented a.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-chip); }
-  .filters { display: flex; gap: 8px; flex-wrap: wrap; }
+  .segmented a:hover { border-color: var(--accent); color: var(--accent); }
+  .segmented a.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .filters { display: flex; gap: 14px; flex-wrap: wrap; }
 
   /* --- Formulaire d'ajout --- */
   .add-task-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
@@ -313,11 +400,12 @@ const PARENT_STYLE = `
   .radio-row label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
   .radio-row label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
   .save-button {
-    font: inherit; font-size: 13px; font-weight: 600;
-    min-height: 40px; padding: 8px 20px;
+    font: inherit; font-size: 13.5px; font-weight: 600;
+    min-height: 44px; padding: 11px 22px;
     background: var(--accent); color: #fff;
-    border: none; border-radius: 8px; cursor: pointer;
+    border: none; border-radius: 9px; cursor: pointer;
   }
+  .save-button:hover { filter: brightness(1.12); }
 
   /* --- Devoir maison --- */
   .dm-card { display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px; }
@@ -338,7 +426,10 @@ const PARENT_STYLE = `
   /* Une action destructive se signale avant le clic, pas apres. */
   .ghost-button.danger { color: var(--danger); border-color: var(--danger); }
   /* --- Configuration de la section Actu --- */
-  .actu-form { display: flex; flex-direction: column; gap: 12px; }
+  .actu-form { display: flex; flex-direction: column; gap: 14px; align-items: stretch; }
+  /* Dans une colonne flex, un bouton s'etire sur toute la largeur. La
+     maquette le veut compact, cale a gauche. */
+  .actu-form > .save-button { align-self: flex-start; }
   .actu-options { display: flex; flex-direction: column; gap: 8px; }
   .actu-option {
     display: flex; gap: 10px; align-items: flex-start; cursor: pointer;
@@ -378,9 +469,9 @@ const PARENT_STYLE = `
   .genre-chip:has(input:checked) { border-color: var(--accent); color: var(--accent); }
   .actu-field select {
     font: inherit; font-size: 14px;
-    min-height: 40px; padding: 8px 12px;
-    border: 1px solid var(--border); border-radius: 8px;
-    background: var(--surface); color: var(--text);
+    min-height: 44px; padding: 11px 14px;
+    border: 1px solid transparent; border-radius: 9px;
+    background: var(--surface-alt); color: var(--text);
   }
   .dm-applied {
     background: var(--surface-alt); border: 1px solid var(--border); border-radius: 10px;
@@ -389,17 +480,22 @@ const PARENT_STYLE = `
   }
   @media (max-width: 900px) { .dm-card { grid-template-columns: 1fr; } }
 
-  .pin-set-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .pin-set-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   .pin-set-form input {
-    font: inherit; font-size: 14px; letter-spacing: .2em;
-    width: 140px; min-height: 40px; padding: 8px 12px;
-    border: 1px solid var(--border); border-radius: 8px;
-    background: var(--surface); color: var(--text);
+    font: inherit; font-size: 14px;
+    flex: 1 1 200px; min-width: 0; min-height: 44px; padding: 11px 14px;
+    border: 1px solid transparent; border-radius: 9px;
+    background: var(--surface-alt); color: var(--text);
+  }
+  .pin-set-form input[name="pin"] { letter-spacing: .2em; flex: 0 0 150px; }
+  .pin-set-form input:focus, .actu-field select:focus, .actu-field input:focus {
+    outline: none; border-color: var(--accent); background: var(--surface);
   }
 
-  .chip { background: var(--surface-alt); border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; font-size: 12px; font-weight: 600; }
+  .chip { background: var(--surface-alt); border: 1px solid transparent; border-radius: 999px; padding: 6px 13px; font-size: 12.5px; font-weight: 600; }
+  .chip.on { background: var(--accent-soft); color: var(--accent-text); }
   .chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
-  .section-label { font-size: 11.5px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 8px; }
+  .section-label { font-size: 12.5px; font-weight: 500; color: var(--text-secondary); margin-bottom: 7px; }
   .empty { color: var(--text-secondary); font-size: 12.5px; margin: 0; }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
 
@@ -482,18 +578,21 @@ export function renderParentShell(options: {
   <div class="app">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-        </div>
-        <div class="brand-text">
+        <div class="brand-row">
+          <div class="brand-mark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+          </div>
           <div class="brand-title">Familyo</div>
-          <div class="brand-sub">Espace Parent</div>
         </div>
+        <div class="brand-sub">Espace Parent</div>
       </div>
       <nav class="nav">${renderNav(options.active, options.pendingReviews ?? 0)}</nav>
       <a class="account" href="/parent/reglages">
         <div class="avatar">${escapeHtml(prefs.name.slice(0, 1).toUpperCase())}</div>
-        <div class="account-name">${escapeHtml(prefs.name)}</div>
+        <div>
+          <div class="account-name">${escapeHtml(prefs.name)}</div>
+          <div class="account-sub">Compte principal</div>
+        </div>
       </a>
     </aside>
     <main class="main">
