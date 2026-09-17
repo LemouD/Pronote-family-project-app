@@ -49,6 +49,7 @@ import {
   getSubjects,
   listProposals,
   removeApplied,
+  removeNote,
   removeSubject,
   removeProposal,
   saveProposal,
@@ -1050,6 +1051,13 @@ async function route(request: Request, env: Env): Promise<Response> {
           return back(error instanceof GeminiError && error.transient ? "surcharge" : "generation");
         }
         return back();
+      }
+
+      // Supprimer une seance du journal du prof. L'inverse de la route
+      // ci-dessous : ici c'est la note qui part, pas l'exercice.
+      if (path === "/parent/devoir-maison/supprimer-seance") {
+        const removed = await removeNote(env, child, String(form.get("noteId") ?? ""));
+        return removed ? back() : back("introuvable");
       }
 
       // Supprimer une proposition = la sortir de la liste sans rien publier.

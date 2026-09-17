@@ -593,7 +593,10 @@ export function renderDevoirMaison(views: TutoringView[], options: { error?: str
           <form method="post" action="/parent/devoir-maison/generer" style="margin-top:14px">
             <input type="hidden" name="childSlug" value="${escapeHtml(view.child.slug)}" />
             <input type="hidden" name="noteId" value="${escapeHtml(note.id)}" />
-            <button type="submit" class="save-button"${options.aiConfigured ? "" : " disabled"}>Generer un exercice</button>
+            <div class="dm-actions">
+              <button type="submit" formaction="/parent/devoir-maison/supprimer-seance" class="ghost-button danger">Supprimer la seance</button>
+              <button type="submit" class="save-button"${options.aiConfigured ? "" : " disabled"}>Generer un exercice</button>
+            </div>
           </form>
         </section>
       `
