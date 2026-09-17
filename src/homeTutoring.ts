@@ -91,6 +91,26 @@ export async function listNotes(env: Env, child: ChildConfig): Promise<TutorNote
   return Array.isArray(stored) ? (stored as TutorNote[]) : [];
 }
 
+/**
+ * Retire une seance du journal du prof. Reserve au parent : c'est lui qui
+ * decide de ce qui reste dans sa file d'attente.
+ *
+ * Une eventuelle proposition deja generee a partir de cette seance n'est pas
+ * touchee. Elle porte son propre texte, et la page sait deja dire que la note
+ * d'origine a ete purgee - supprimer l'exercice avec la note ferait perdre au
+ * parent un travail qu'il voulait peut-etre garder.
+ *
+ * Retourne false si la seance n'existait plus.
+ */
+export async function removeNote(env: Env, child: ChildConfig, noteId: string): Promise<boolean> {
+  const notes = await listNotes(env, child);
+  const remaining = notes.filter((note) => note.id !== noteId);
+  if (remaining.length === notes.length) return false;
+
+  await env.PRONOTE_CACHE.put(logKey(child), JSON.stringify(remaining));
+  return true;
+}
+
 export async function addNote(env: Env, child: ChildConfig, input: NewTutorNote): Promise<TutorNote> {
   const note: TutorNote = {
     id: crypto.randomUUID(),
