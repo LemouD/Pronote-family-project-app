@@ -232,46 +232,91 @@ export async function cachedDaily<T>(
  */
 const ALLOWED_IMAGE_HOSTS = new Set([
   "apod.nasa.gov",
-  "media.rawg.io",
   "crests.football-data.org",
   "www.freetogame.com",
   "thumb.wikimedia.org",
   "upload.wikimedia.org"
 ]);
 
-export async function proxyImage(source: string): Promise<Response> {
+/**
+ * Types acceptes, en liste fermee et non par prefixe "image/".
+ *
+ * Le SVG en est volontairement absent : c'est un document, il peut contenir
+ * du script, et servi depuis notre propre origine ce script s'executerait
+ * dans notre contexte. Commons heberge des SVG televerses par n'importe qui.
+ */
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
+
+/** Nombre de redirections suivies, chacune revalidee contre la liste d'hotes. */
+const MAX_REDIRECTS = 2;
+
+function allowedImageUrl(source: string): URL | null {
   let url: URL;
   try {
     url = new URL(source);
   } catch {
-    return new Response("Image introuvable.", { status: 404 });
+    return null;
   }
+  return url.protocol === "https:" && ALLOWED_IMAGE_HOSTS.has(url.hostname) ? url : null;
+}
 
-  if (url.protocol !== "https:" || !ALLOWED_IMAGE_HOSTS.has(url.hostname)) {
-    return new Response("Image introuvable.", { status: 404 });
-  }
+export async function proxyImage(source: string): Promise<Response> {
+  let url = allowedImageUrl(source);
+  if (!url) return new Response("Image introuvable.", { status: 404 });
 
   try {
-    // Wikimedia refuse les requetes sans agent identifiable ; les autres
-    // sources s'en moquent, mais un en-tete commun ne coute rien.
-    const response = await fetch(url, {
-      headers: { "user-agent": "devoirs-pronote/1.0 (application familiale)" },
-      signal: AbortSignal.timeout(8000)
-    });
+    let response: Response | null = null;
+
+    // Les redirections sont suivies a la main. En mode automatique, la liste
+    // d'hotes ne serait verifiee que sur la premiere URL : un hote autorise
+    // qui redirige - par negligence, par redirection ouverte, ou parce qu'il
+    // a ete compromis - enverrait le Worker ou il veut, y compris vers une
+    // adresse interne. Ici chaque saut repasse par la liste.
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      // Wikimedia refuse les requetes sans agent identifiable ; les autres
+      // sources s'en moquent, mais un en-tete commun ne coute rien.
+      response = await fetch(url, {
+        headers: { "user-agent": "devoirs-pronote/1.0 (application familiale)" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(8000)
+      });
+
+      if (response.status < 300 || response.status >= 400) break;
+
+      const next = allowedImageUrl(new URL(response.headers.get("location") ?? "", url).toString());
+      if (!next) {
+        console.error(`proxyImage(${url.hostname}) : redirection hors liste blanche`);
+        return new Response("Image introuvable.", { status: 404 });
+      }
+      url = next;
+      response = null;
+    }
+
+    if (!response) {
+      console.error(`proxyImage(${url.hostname}) : trop de redirections`);
+      return new Response("Image indisponible.", { status: 502 });
+    }
+
     if (!response.ok) {
       console.error(`proxyImage(${url.hostname}) : ${response.status}`);
       return new Response("Image indisponible.", { status: 502 });
     }
 
-    const type = response.headers.get("content-type") ?? "";
-    if (!type.startsWith("image/")) {
-      console.error(`proxyImage(${url.hostname}) : type inattendu "${type}"`);
+    const type = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    if (!ALLOWED_IMAGE_TYPES.has(type)) {
+      console.error(`proxyImage(${url.hostname}) : type refuse "${type}"`);
       return new Response("Image indisponible.", { status: 502 });
     }
 
     return new Response(response.body, {
       headers: {
         "content-type": type,
+        // nosniff : sans lui, un navigateur pourrait reinterpreter le contenu
+        // autrement que ce que l'en-tete annonce. La CSP neutralise ce qui
+        // s'executerait malgre tout - cette reponse ne passe pas par html(),
+        // donc elle porte ses en-tetes elle-meme.
+        "x-content-type-options": "nosniff",
+        "content-security-policy": "default-src 'none'; sandbox",
         // L'image du jour ne change pas dans la journee, et elle ne dit rien
         // de personnel : elle peut etre gardee par le navigateur.
         "cache-control": "private, max-age=21600"
