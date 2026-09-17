@@ -121,6 +121,33 @@ function syncAlert(entry: ParentChildData): SyncAlert {
   return { level: "ok", title: `Synchro ${name}`, detail: `Mise a jour ${relativeTime(entry.sync.syncedAt)}` };
 }
 
+const PILL_ICONS = {
+  ok: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`,
+  warn: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  danger: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`
+};
+
+/**
+ * Etat de la synchro en une pastille, pour l'angle de la carte. Meme source de
+ * verite que l'alerte detaillee, mais reduite a ce qui se lit d'un coup d'oeil.
+ */
+function syncPill(entry: ParentChildData): { level: "ok" | "warn" | "danger"; label: string } {
+  if (!entry.sync.externallySynced) return { level: "ok", label: "Connexion directe" };
+  if (!entry.sync.syncedAt) return { level: "warn", label: "Jamais synchronise" };
+
+  const elapsedHours = (Date.now() - new Date(entry.sync.syncedAt).getTime()) / 3_600_000;
+  if (elapsedHours > SYNC_BROKEN_AFTER_HOURS) return { level: "danger", label: "Synchro en panne" };
+  if (elapsedHours > SYNC_LATE_AFTER_HOURS) return { level: "warn", label: "Synchro en retard" };
+  return { level: "ok", label: `Mise a jour ${relativeTime(entry.sync.syncedAt)}` };
+}
+
+/** Seuils d'appreciation d'une note, pour la couleur de sa pastille. */
+function gradeTone(outOf20: number): string {
+  if (outOf20 >= 14) return "bon";
+  if (outOf20 >= 10) return "moyen";
+  return "faible";
+}
+
 export function renderOverview(data: ParentChildData[]): string {
   const cards = data
     .map((entry) => {
@@ -128,32 +155,37 @@ export function renderOverview(data: ParentChildData[]): string {
       const done = entry.items.filter((item) => item.done).length;
       const percent = total === 0 ? 0 : Math.round((done / total) * 100);
 
+      const prayerPercent =
+        entry.prayers.total === 0 ? 0 : Math.round((entry.prayers.done / entry.prayers.total) * 100);
+      const pill = syncPill(entry);
+
       return `
         <section class="card" style="${childColorVars(entry.accent)}">
           <div class="child-head">
             <div class="child-avatar">${escapeHtml(entry.child.displayName.slice(0, 1))}</div>
             <div>
               <div class="child-name">${escapeHtml(entry.child.displayName)}</div>
-              <div class="child-year">${escapeHtml(entry.child.schoolYear)}</div>
+              <div class="child-year">Classe de ${escapeHtml(entry.child.schoolYear)}</div>
             </div>
+            <span class="status-pill ${pill.level}">${PILL_ICONS[pill.level]}${escapeHtml(pill.label)}</span>
           </div>
-          ${entry.error ? `<div class="alert alert-danger"><div class="alert-bar"></div><div><div class="alert-title">${escapeHtml(entry.error)}</div></div></div>` : ""}
-          <div style="display:flex;flex-direction:column;gap:12px">
+          ${entry.error ? `<div class="alert alert-danger" style="margin-bottom:18px"><div class="alert-bar"></div><div><div class="alert-title">${escapeHtml(entry.error)}</div></div></div>` : ""}
+          <div class="meters-row">
             <div>
-              <div class="meter-label">
-                <span>Devoirs (aujourd'hui/demain)</span>
-                <span>${done}/${total}</span>
+              <div class="meter-name">Devoirs du jour</div>
+              <div class="meter-line">
+                <span class="meter-count">${done}/${total}</span>
+                <span class="meter"><span style="display:block;height:100%;border-radius:20px;background:var(--accent);width:${percent}%"></span></span>
+                <span class="meter-pct">${percent}%</span>
               </div>
-              <div class="meter"><div style="width:${percent}%"></div></div>
             </div>
             <div>
-              <div class="meter-label">
-                <span>Prieres aujourd'hui</span>
-                <span>${entry.prayers.done}/${entry.prayers.total}</span>
+              <div class="meter-name">Prieres aujourd'hui</div>
+              <div class="meter-line">
+                <span class="meter-count">${entry.prayers.done}/${entry.prayers.total}</span>
+                <span class="meter prieres"><span style="display:block;height:100%;border-radius:20px;background:var(--warning);width:${prayerPercent}%"></span></span>
+                <span class="meter-pct">${prayerPercent}%</span>
               </div>
-              <div class="meter"><div style="width:${
-                entry.prayers.total === 0 ? 0 : Math.round((entry.prayers.done / entry.prayers.total) * 100)
-              }%"></div></div>
             </div>
           </div>
         </section>
@@ -179,11 +211,16 @@ export function renderOverview(data: ParentChildData[]): string {
       detail: "Sa page est bloquee tant que tu ne lui en donnes pas un, dans Reglages."
     }));
 
+  // La pastille de chaque carte dit deja que tout va bien. Ne restent ici que
+  // les lignes qui appellent un geste ou annoncent quelque chose de nouveau :
+  // une liste d'alertes ou tout est vert n'apprend rien et se fait ignorer.
   const alerts = [...examDone, ...missingPin, ...data.map((entry) => syncAlert(entry))]
+    .filter((alert) => alert.level !== "ok" || alert.title.includes("termine"))
     .map(
       (alert) => `
         <div class="alert alert-${alert.level}">
           <div class="alert-bar"></div>
+          <span class="alert-icon">${PILL_ICONS[alert.level === "danger" ? "danger" : alert.level === "warn" ? "warn" : "ok"]}</span>
           <div>
             <div class="alert-title">${escapeHtml(alert.title)}</div>
             <div class="alert-detail">${escapeHtml(alert.detail)}</div>
@@ -199,9 +236,10 @@ export function renderOverview(data: ParentChildData[]): string {
     .filter((entry) => entry.tutoringPending > 0)
     .map(
       (entry) => `
-        <div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px">
-          <span style="font-weight:600">${escapeHtml(entry.child.displayName)}</span>
-          <span class="muted">${entry.tutoringPending} en attente</span>
+        <div style="display:flex;align-items:center;gap:10px;${childColorVars(entry.accent)}">
+          <span class="child-chip">${escapeHtml(entry.child.displayName)}</span>
+          <span style="font-size:12.5px;flex:1;min-width:0">${entry.tutoringPending} en attente de verification</span>
+          <a class="open-link" href="/parent/devoir-maison">Ouvrir &rarr;</a>
         </div>
       `
     )
@@ -249,15 +287,18 @@ export function renderOverview(data: ParentChildData[]): string {
   const recentRows = data
     .flatMap((entry) => entry.recentGrades.map((grade) => ({ entry, grade })))
     .sort((a, b) => b.grade.date.localeCompare(a.grade.date))
-    .slice(0, 4)
+    .slice(0, 5)
     .map(
       ({ entry, grade }) => `
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div class="grade-row" style="${childColorVars(entry.accent)}">
           <div style="min-width:0">
-            <div style="font-size:12.5px;font-weight:600;overflow-wrap:anywhere">${escapeHtml(grade.subject)}</div>
-            <div class="grade-class">${escapeHtml(entry.child.displayName)}</div>
+            <div class="grade-subject">${escapeHtml(grade.subject)}</div>
+            <div class="grade-date">${escapeHtml(dayLabel(grade.date))}</div>
           </div>
-          <div class="grade-value">${escapeHtml(formatGrade(grade.outOf20))}/20</div>
+          <div class="grade-side">
+            <span class="child-chip">${escapeHtml(entry.child.displayName)}</span>
+            <span class="grade-pill ${gradeTone(grade.outOf20)}">${escapeHtml(formatGrade(grade.outOf20))}/20</span>
+          </div>
         </div>
       `
     )
@@ -266,12 +307,17 @@ export function renderOverview(data: ParentChildData[]): string {
   return `
     <div class="grid-children">${cards || `<div class="card"><p class="empty">Aucun enfant configure.</p></div>`}</div>
     <div class="grid-lower">
+      <div class="grid-col">
       <section class="card">
         <div class="card-title">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
           Alertes
         </div>
-        <div style="display:flex;flex-direction:column;gap:10px">${alerts}</div>
+        ${
+          alerts
+            ? `<div style="display:flex;flex-direction:column;gap:10px">${alerts}</div>`
+            : `<p class="empty">Rien a signaler aujourd'hui.</p>`
+        }
       </section>
       <section class="card">
         <div class="card-title">
@@ -280,8 +326,7 @@ export function renderOverview(data: ParentChildData[]): string {
         </div>
         ${
           totalPending > 0
-            ? `<div style="display:flex;flex-direction:column;gap:10px">${pendingRows}</div>
-               <a class="muted" href="/parent/devoir-maison">Ouvrir</a>`
+            ? `<div style="display:flex;flex-direction:column;gap:12px">${pendingRows}</div>`
             : `<p class="empty">Rien a valider pour le moment.</p>`
         }
       </section>
@@ -293,14 +338,17 @@ export function renderOverview(data: ParentChildData[]): string {
             : `<p class="empty">Aucun des enfants n'a organise sa soiree aujourd'hui.</p>`
         }
       </section>
+      </div>
+      <div class="grid-col">
       <section class="card">
         <div class="card-title">Notes recentes</div>
         ${
           recentRows
-            ? `<div style="display:flex;flex-direction:column;gap:10px">${recentRows}</div>`
+            ? `<div>${recentRows}</div>`
             : `<p class="empty">Aucune note importee pour le moment.</p>`
         }
       </section>
+      </div>
     </div>
   `;
 }
@@ -316,6 +364,8 @@ export interface DevoirsFilters {
  * Filtres en controle segmente : de simples liens, donc pas de JavaScript et
  * l'etat courant reste dans l'URL (partageable, rechargeable).
  */
+const CHECK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`;
+
 function renderFilters(data: ParentChildData[], filters: DevoirsFilters): string {
   const link = (params: { enfant?: string; statut?: string }, label: string, active: boolean) => {
     const query = new URLSearchParams();
@@ -381,19 +431,36 @@ export function renderDevoirs(data: ParentChildData[], filters: DevoirsFilters):
     )
     .sort((a, b) => a.item.deadline.localeCompare(b.item.deadline));
 
-  const body = rows
+  // Regroupe par echeance : "Aujourd'hui" puis "Demain", comme la maquette.
+  // L'echeance devient un intertitre au lieu d'une colonne repetee a chaque
+  // ligne.
+  const byDay = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const label = dayLabel(row.item.deadline);
+    byDay.set(label, [...(byDay.get(label) ?? []), row]);
+  }
+
+  const body = [...byDay.entries()]
     .map(
-      ({ entry, item }) => `
-        <div class="row ${item.done ? "row-done" : ""}" style="${childColorVars(entry.accent)}">
-          <div class="row-child"><span class="dot"></span>${escapeHtml(entry.child.displayName)}</div>
-          <div class="row-muted row-subject">${escapeHtml(item.source === "pronote" ? item.subject : (item.author ?? "Tache"))}</div>
-          <div class="row-text">${escapeHtml(item.description || "(pas de description)")}</div>
-          <div class="row-muted row-due">${escapeHtml(dayLabel(item.deadline))}</div>
-          <div>
-            <span class="badge ${item.done ? "badge-done" : "badge-todo"}">${item.done ? "Fait" : "A faire"}</span>
-            ${item.isNew ? ' <span class="badge badge-new">Nouveau</span>' : ""}
-          </div>
-        </div>
+      ([label, dayRows]) => `
+        <div class="hw-day">${escapeHtml(label)}</div>
+        ${dayRows
+          .map(
+            ({ entry, item }) => `
+              <div class="hw-row ${item.done ? "done" : ""}" style="${childColorVars(entry.accent)}">
+                <span class="hw-check">${CHECK_ICON}</span>
+                <span class="hw-subject">${escapeHtml(
+                  item.source === "pronote" ? item.subject : (item.author ?? "Tache")
+                )}</span>
+                <span class="hw-text">${escapeHtml(item.description || "(pas de description)")}</span>
+                <span class="hw-side">
+                  ${item.isNew ? '<span class="badge badge-new">Nouveau</span>' : ""}
+                  <span class="child-chip">${escapeHtml(entry.child.displayName)}</span>
+                </span>
+              </div>
+            `
+          )
+          .join("")}
       `
     )
     .join("");
@@ -412,11 +479,8 @@ export function renderDevoirs(data: ParentChildData[], filters: DevoirsFilters):
 
   return `
     ${errors}
-    <div class="table-card">
-      <div class="row row-head">
-        <div>Enfant</div><div>Matiere</div><div>Devoir</div><div>Echeance</div><div>Statut</div>
-      </div>
-      ${body || `<div class="row"><p class="empty">Aucun devoir ne correspond a ce filtre.</p></div>`}
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${body || `<div class="card"><p class="empty">Aucun devoir ne correspond a ce filtre.</p></div>`}
     </div>
     ${renderAddTaskForm(data)}
   `;

@@ -1,4 +1,5 @@
 import baloo2 from "./assets/baloo2.woff2";
+import lora from "./assets/lora.woff2";
 import nunito from "./assets/nunito.woff2";
 import plexSans from "./assets/plex-sans.woff2";
 
@@ -9,8 +10,10 @@ import plexSans from "./assets/plex-sans.woff2";
  * un seul fichier couvre toutes les graisses de sa famille.
  */
 export const FONTS = {
-  /** Espace parent. */
+  /** Espace parent, texte courant. */
   plexSans: "/assets/plex-sans.woff2",
+  /** Espace parent, titres. Le serif porte une bonne part de l'identite. */
+  lora: "/assets/lora.woff2",
   /** Espace enfant, texte courant. */
   nunito: "/assets/nunito.woff2",
   /** Espace enfant, titres. */
@@ -19,6 +22,7 @@ export const FONTS = {
 
 const FILES = new Map<string, ArrayBuffer>([
   [FONTS.plexSans, plexSans],
+  [FONTS.lora, lora],
   [FONTS.nunito, nunito],
   [FONTS.baloo2, baloo2]
 ]);
