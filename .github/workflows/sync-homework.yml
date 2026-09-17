@@ -5,13 +5,21 @@ name: Synchro devoirs Pronote (ENT)
 # Worker lit ensuite. Tourne cote GitHub (gratuit), pas besoin que le PC de
 # la maison soit allume.
 #
-# Horaires en UTC : environ 12h-21h heure de Paris selon la saison (les
-# devoirs cessent d'etre mis a jour par les enseignants en fin de journee,
-# un dernier passage vers 20h suffit ensuite).
+# Cinq passages par jour, en UTC : 08h07, 12h07, 15h07, 18h07 et 21h07 heure
+# de Paris en ete.
+#
+# Le cron precedent demandait un passage toutes les 30 minutes et en obtenait
+# trois par jour : GitHub ne garantit pas les evenements "schedule", il les
+# retarde et les abandonne sous charge, et il penalise d'autant plus les crons
+# frequents. Demander moins est ici le moyen d'obtenir plus - et surtout, le
+# calendrier annonce correspond enfin a ce qui se passe.
+#
+# La minute 07 est volontaire : tout le monde programme a l'heure pile, ce qui
+# est le pire moment pour etre servi.
 
 on:
   schedule:
-    - cron: "*/30 10-19 * * *"
+    - cron: "7 6,10,13,16,19 * * *"
   workflow_dispatch: {} # bouton "Run workflow" pour forcer une synchro immediate
 
 permissions:

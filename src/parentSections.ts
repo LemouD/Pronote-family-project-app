@@ -46,8 +46,21 @@ export interface ParentChildData {
   subjects: string[];
 }
 
-/** Au-dela de ce delai sans import reussi, la synchro externe est signalee comme en retard. */
-const SYNC_STALE_AFTER_HOURS = 8;
+/**
+ * Seuils d'alerte sur la synchro externe, cales sur le rythme reel et non sur
+ * le rythme souhaite.
+ *
+ * Rien ne tourne la nuit : entre la derniere synchro du soir et la premiere du
+ * matin il s'ecoule une dizaine d'heures, tous les jours. Un seuil plus court
+ * allumerait donc une alerte chaque matin - et un rouge quotidien apprend a
+ * ignorer les alertes, y compris les vraies. C'est exactement ce qu'on avait
+ * corrige sur la vue d'ensemble.
+ *
+ * Au-dela d'une nuit plus une marge, c'est un retard : orange. Au-dela d'une
+ * journee entiere sans une seule reussite, quelque chose est casse : rouge.
+ */
+const SYNC_LATE_AFTER_HOURS = 14;
+const SYNC_BROKEN_AFTER_HOURS = 36;
 
 /**
  * Chaque enfant a une couleur d'identification, declinee clair/sombre. Elle
@@ -90,11 +103,19 @@ function syncAlert(entry: ParentChildData): SyncAlert {
   }
 
   const elapsedHours = (Date.now() - new Date(entry.sync.syncedAt).getTime()) / 3_600_000;
-  if (elapsedHours > SYNC_STALE_AFTER_HOURS) {
+
+  if (elapsedHours > SYNC_BROKEN_AFTER_HOURS) {
     return {
       level: "danger",
+      title: `Synchro ${name} en panne`,
+      detail: `Aucune reussite depuis ${relativeTime(entry.sync.syncedAt)} - verifier GitHub Actions.`
+    };
+  }
+  if (elapsedHours > SYNC_LATE_AFTER_HOURS) {
+    return {
+      level: "warn",
       title: `Synchro ${name} en retard`,
-      detail: `Derniere reussite ${relativeTime(entry.sync.syncedAt)} - verifier GitHub Actions.`
+      detail: `Derniere reussite ${relativeTime(entry.sync.syncedAt)}. La synchro passe plusieurs fois par jour, pas la nuit.`
     };
   }
   return { level: "ok", title: `Synchro ${name}`, detail: `Mise a jour ${relativeTime(entry.sync.syncedAt)}` };
