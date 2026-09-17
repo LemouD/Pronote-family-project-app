@@ -490,6 +490,26 @@ async function renderParentPage(page: ParentPage, env: Env, url: URL, prefs: Par
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    try {
+      return await route(request, env);
+    } catch (error) {
+      // Filet de securite. Sans lui, une exception non rattrapee laisse le
+      // runtime choisir la reponse : en developpement, wrangler rend une page
+      // de debogage qui affiche les en-tetes de la requete, cookies de session
+      // compris. Ici la cause part dans les journaux, et l'utilisateur ne voit
+      // qu'une phrase.
+      console.error(`unhandled ${request.method} ${new URL(request.url).pathname}:`, error);
+      return html("Une erreur est survenue. Reessaie dans un instant.", 500);
+    }
+  }
+};
+
+/**
+ * Corps du routage. Le decoupage garde l'indentation d'origine pour que le
+ * filet de securite ci-dessus reste un diff de quelques lignes, relisible,
+ * plutot qu'un deplacement de sept cents lignes.
+ */
+async function route(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     // /parent et /parent/ designent la meme page ; le manifeste PWA utilise la
     // forme avec slash final (obligatoire pour que start_url reste dans scope).
@@ -1195,5 +1215,4 @@ export default {
     }
 
     return html("Page introuvable.", 404);
-  }
-};
+}
