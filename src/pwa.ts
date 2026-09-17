@@ -24,8 +24,8 @@ export const PWA_ASSET_PATHS = {
 export const PARENT_THEME_COLOR = "#4338CA";
 
 const MANIFEST = {
-  name: "Devoirs - Espace Parent",
-  short_name: "Devoirs",
+  name: "Familyo - Espace Parent",
+  short_name: "Familyo",
   description: "Devoirs, notes et suivi quotidien des enfants.",
   // scope et start_url portent tous les deux le slash final : un start_url
   // hors du scope rend le manifeste invalide et bloque l'installation.
@@ -51,7 +51,11 @@ const MANIFEST = {
  * contredirait cet en-tete, donc elles passent toujours par le reseau.
  */
 const SERVICE_WORKER = `
-const CACHE = "parent-shell-v2";
+// Numero a incrementer des qu'un asset statique change de contenu - le
+// manifeste en fait partie. Sans ca, un appareil deja installe garderait
+// l'ancien indefiniment : la strategie de lecture est "cache d'abord", et
+// l'activation ne supprime que les caches dont le nom differe.
+const CACHE = "parent-shell-v3";
 const STATIC_ASSETS = ${JSON.stringify([
   PWA_ASSET_PATHS.manifest,
   PWA_ASSET_PATHS.icon192,

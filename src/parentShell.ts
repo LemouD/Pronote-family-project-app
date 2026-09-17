@@ -470,7 +470,7 @@ export function renderParentShell(options: {
   <meta name="theme-color" content="${PARENT_THEME_COLOR}" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-title" content="Devoirs" />
+  <meta name="apple-mobile-web-app-title" content="Familyo" />
   <link rel="manifest" href="${PWA_ASSET_PATHS.manifest}" />
   <link rel="preload" as="font" type="font/woff2" href="${FONTS.plexSans}" crossorigin />
   <link rel="icon" type="image/png" sizes="192x192" href="${PWA_ASSET_PATHS.icon192}" />
@@ -486,7 +486,7 @@ export function renderParentShell(options: {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         </div>
         <div class="brand-text">
-          <div class="brand-title">Devoirs</div>
+          <div class="brand-title">Familyo</div>
           <div class="brand-sub">Espace Parent</div>
         </div>
       </div>
