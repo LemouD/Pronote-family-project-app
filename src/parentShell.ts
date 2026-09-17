@@ -1,5 +1,6 @@
 import { fontFace, FONTS } from "./fonts";
 import { escapeHtml } from "./html";
+import { APP_ICON_SVG } from "./logo";
 import { type ParentPreferences, themeAttribute } from "./preferences";
 import { PARENT_THEME_COLOR, PWA_ASSET_PATHS } from "./pwa";
 
@@ -63,9 +64,9 @@ const PARENT_LIGHT_TOKENS = `
     --border: #E8EAEE;
     --text: #1A2B23;
     --text-secondary: #6B7280;
-    --accent: #1B5E3F;
+    --accent: #1B5E4F;
     --accent-soft: #E7F3EB;
-    --accent-text: #14563A;
+    --accent-text: #14563F;
     --success: #16A34A;
     --success-soft: #DCFCE7;
     --warning: #D9761F;
@@ -82,9 +83,9 @@ const PARENT_DARK_TOKENS = `
     --border: #23332B;
     --text: #ECF3EE;
     --text-secondary: #9AA8A0;
-    --accent: #5FBE8C;
-    --accent-soft: #16301F;
-    --accent-text: #A7E3C1;
+    --accent: #5CC4A6;
+    --accent-soft: #14302A;
+    --accent-text: #A7E3D2;
     --success: #4ADE80;
     --success-soft: #14532D;
     --warning: #F2A25C;
@@ -143,12 +144,10 @@ const PARENT_STYLE = `
   }
   .brand { display: block; padding: 4px 8px 26px; }
   .brand-row { display: flex; align-items: center; gap: 9px; }
-  .brand-mark {
-    width: 30px; height: 30px; flex: 0 0 30px;
-    border-radius: 9px; background: var(--accent);
-    display: flex; align-items: center; justify-content: center;
-  }
-  .brand-mark svg { width: 17px; height: 17px; color: #fff; }
+  /* Le logo porte deja son carre vert arrondi : pas de fond ici, sinon on
+     empilerait deux carres de vert legerement differents. */
+  .brand-mark { width: 30px; height: 30px; flex: 0 0 30px; }
+  .brand-mark svg { width: 100%; height: 100%; display: block; }
   .brand-title {
     font-family: 'Lora', Georgia, serif;
     font-weight: 700; font-size: 19px; line-height: 1.1; color: var(--accent);
@@ -579,9 +578,7 @@ export function renderParentShell(options: {
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-row">
-          <div class="brand-mark">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
-          </div>
+          <div class="brand-mark">${APP_ICON_SVG}</div>
           <div class="brand-title">Familyo</div>
         </div>
         <div class="brand-sub">Espace Parent</div>

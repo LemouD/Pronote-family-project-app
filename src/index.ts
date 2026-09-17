@@ -70,6 +70,7 @@ import {
 } from "./routine";
 import { renderTutorLogin, renderTutorPage, renderTutorPinMissing } from "./tutorPage";
 import { checkAttempts, clearAttempts, recordFailure } from "./loginAttempts";
+import { APP_ICON_SVG } from "./logo";
 import { exchangeTokenForSession, isParentAuthorized } from "./parentAuth";
 import {
   ADD_TASK_SCRIPT,
@@ -162,13 +163,6 @@ function newNonce(): string {
 // Donnees personnelles d'un enfant : jamais mises en cache (navigateur ou
 // intermediaire), utile notamment sur une tablette partagee.
 const NO_STORE = { "cache-control": "private, no-store" };
-
-const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Familyo">
-  <rect width="64" height="64" rx="14" fill="#2f6fed"/>
-  <path d="M16 18h25a7 7 0 0 1 7 7v22H23a7 7 0 0 1-7-7V18Z" fill="#fff"/>
-  <path d="M23 18v22a7 7 0 0 1 7 7h18" fill="none" stroke="#2f6fed" stroke-width="4"/>
-  <path d="m30 32 5 5 10-11" fill="none" stroke="#f5b942" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/>
-</svg>`;
 
 /**
  * Toutes les pages passent par ici, donc le nonce se pose ici plutot que de
@@ -558,7 +552,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     const path = url.pathname.replace(/\/+$/, "") || "/";
 
     if (path === "/favicon.svg" && request.method === "GET") {
-      return new Response(FAVICON_SVG, {
+      return new Response(APP_ICON_SVG, {
         headers: { "content-type": "image/svg+xml; charset=utf-8", ...SECURITY_HEADERS, "cache-control": "public, max-age=3600" }
       });
     }
